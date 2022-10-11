@@ -369,6 +369,9 @@ class Chunking_Graph:
         else:
             return None
 
+
+
+
 def sample_from_distribution(states, prob):
     """
     states: a list

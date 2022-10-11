@@ -30,15 +30,12 @@ class CG1:
         # each item in vertex list has a corresponding vertex location.
         # edge list: list of vertex tuples
         self.vertex_list = [] # list of the chunks
-        self.vertex_location = []
-        self.visible_chunk_list = [] # list of visible chunks # the representation of absract chunk entries is replaced by 0
         # the concrete and abstract chunk list together i
-        self.edge_list = []
         self.y0 = y0 # the initial height of the graph, used for plotting
         self.x_max = x_max # initial x location of the graph
-        self.chunks = []# a dictonary with chunk keys and chunk tuples,
-        self.concrete_chunks = []# list of chunks with no variables
-        self.abstract_chunks = []# list of chunks with variables
+        self.chunks = {}# a dictonary with chunk keys and chunk tuples
+        self.concrete_chunks = []# no entailment
+        self.ancestors = []# list of chunks without parents
         self.theta = theta# forgetting rate
         self.deletion_threshold = DT
         self.H = 1 # default
@@ -46,14 +43,92 @@ class CG1:
         self.zero = None
         self.relational_graph = False
 
+
     def get_N(self):
         """returns the number of parsed observations"""
         assert len(self.chunks)>0
         N = 0
-        for ck in self.chunks:
-            N = N + ck.count
+        for i in self.chunks:
+            N = N + self.chunks[i].count
         return N
 
+    def get_N_transition(self, dt = None):
+        """returns the number of parsed observations"""
+        assert len(self.chunks)>0
+
+        if dt == None:
+            N_transition = 0
+            for chunk in self.chunks:
+                for dt in self.chunks[chunk].adjacency:
+                    N_transition = N_transition + sum(self.chunks[chunk].adjacency[dt].values())
+
+            return N_transition
+        else:
+            N_transition = 0
+            for chunk in self.chunks:
+                if dt in self.chunks[chunk].adjacency:
+                    N_transition = N_transition + self.chunks[chunk].adjacency[dt].values()
+            return N_transition
+
+
+    def empty_counts(self):
+        """empty count entries and transition entries in each chunk"""
+        for ck in self.chunks:
+            ck.count = 0
+            ck.empty_counts()
+        return
+
+
+    def hypothesis_test(self,clidx,cridx,dt):
+        cl = self.chunks[clidx]
+        cr = self.chunks[cridx]
+        assert len(cl.adjacency)>0
+        assert dt in list(cl.adjacency.keys())
+        N = self.get_N()
+        N_transition = self.get_N_transition(dt = dt)
+
+        N_min = 5
+        # Expected
+        ep1p1 = (cl.count/N) * (cr.count/N) * N_transition
+        ep1p0 = (cl.count/N) * (N - cr.count)/N * N_transition
+        ep0p1 = (N - cl.count)/N * (cr.count/N) * N_transition
+        ep0p0 = (N - cl.count)/N * (N - cr.count)/N * N_transition
+
+        # Observed
+        op1p1 = cl.adjacency[dt][cridx]
+        op1p0 = cl.get_N_transition(dt) - cl.adjacency[dt][cridx]
+        op0p1 = 0
+        op0p0 = 0
+        for ncl in list(self.chunks):# iterate over p0, which is the cases where cl is not observed
+            if ncl != cl:
+                if dt in list(ncl.adjacency.keys()):
+                    if cridx in list(ncl.adjacency[dt].keys()):
+                        op0p1 = op0p1 + ncl.adjacency[dt][cridx]
+                        for ncridx in list(ncl.adjacency[dt].keys()):
+                            if ncridx != cr:
+                                op0p0 = op0p0 + ncl.adjacency[dt][ncridx]
+
+        if op0p0 <= N_min or op1p0 <= N_min or op1p1 <= N_min or op0p1 <= N_min:
+            return True
+        else:
+            _, pvalue = stats.chisquare([op1p1,op1p0,op0p1,op0p0], f_exp=[ep1p1,ep1p0,ep0p1,ep0p0], ddof=1)
+            # print('p value is ', pvalue)
+            if pvalue < 0.05:
+                return False # reject independence hypothesis, there is a correlation
+            else:
+                return True
+
+
+    def getmaxchunksize(
+        self,
+    ):  # TODO: alternatively, update this value upon every chunk creation
+        maxchunksize = 0
+        if len(self.chunks) > 0:
+            for ck in self.chunks:
+                if ck.volume > maxchunksize:
+                    maxchunksize = ck.volume
+
+        return maxchunksize
 
     def observation_to_tuple(self,relevant_observations):
         """relevant_observations: array like object"""
@@ -78,6 +153,37 @@ class CG1:
         nzmm.remove(self.zero)
 
         return nzmm
+
+    def reinitialize(self):
+        # use in the case of reparsing an old sequence using the learned chunks.
+        for ck in self.chunks:
+            ck.count = 0
+        return
+
+    def graph_pruning(self):
+        # prune representation graph
+        init = self.ancestors.copy()
+
+        for ck in init:
+            this_chunk = ck
+            while len(this_chunk.cl) > 0: # has children
+
+                if len(this_chunk.cl) == 1: #only one children
+                    if this_chunk.acl == []:# ancestor node
+                        self.ancestors.pop(this_chunk)
+                        self.ancestors.__add__(this_chunk.cl)
+                    else:
+                        ancestor = this_chunk.acl
+                        ancestor.cl.add(this_chunk.cl)
+                        this_chunk.acr.cr.pop(this_chunk)
+                        this_chunk.acr = []
+
+
+                    for rightkid in this_chunk.cr:
+                        this_chunk.cl.__add__(rightkid)
+                        rightkid.cl = ancestor# TODO: can add right chunk ancestor to children as well.
+        return
+
 
 
     def get_T(self):
@@ -116,48 +222,44 @@ class CG1:
         # np.save('graphchunk.npy', chunklist, allow_pickle=True)
         return
 
-
-    def prediction(self,seq):
-        # TODO: how does the prediction work?
-        """input: seq in np array
-           output: prediction of the next several sequential items based on the previous observations,
-           and the confidence judged by the model"""
-        prediction = {}
-        return prediction
-
+    def check_and_add_to_dict(self, dictionary, key):
+        if key in dictionary:
+            dictionary[key] = dictionary[key] + 1
+        else:
+            dictionary[key] = 1
+        return dictionary
 
     # update graph configuration
-    def add_chunk(self, newc, leftidx= None, rightidx = None):
+    def add_chunk(self, newc, leftkey= None, rightkey = None):
         # TODO: add time when the chunk is being created
-        self.vertex_list.append(newc)
-        self.chunks.append(newc) # add observation
-        self.visible_chunk_list.append(newc.content)
+        self.vertex_list.append(newc.key)
+        self.chunks[newc.key] = newc # add observation
+
         newc.index = self.chunks.index(newc)
         newc.H = self.H # initialize height and weight in chunk
         newc.W = self.W
         # compute the x and y location of the chunk based on pre-existing
         # graph configuration, when this chunk first emerges
-        if leftidx is None and rightidx is None:
+        if leftkey is None and rightkey is None:
             x_new_c = self.x_max + 1
             y_new_c = self.y0
             self.x_max = x_new_c
-            self.vertex_location.append([x_new_c, y_new_c])
+            newc.vertex_location = [x_new_c, y_new_c]
         else:
-            l_x, l_y = self.vertex_location[leftidx]
-            r_x, r_y = self.vertex_location[rightidx]
+            leftparent = self.chunks[leftkey]
+            rightparent = self.chunks[rightkey]
+            l_x, l_y = leftparent.vertex_location
+            r_x, r_y = rightparent.vertex_location[rightkey]
             x_c = (l_x + r_x)*0.5
             y_c = self.y0
+            self.vertex_location = [x_c, y_c]
             self.y0 = self.y0 + 1
-            idx_c = len(self.vertex_list) - 1
-            self.edge_list.append((leftidx, idx_c))
-            self.edge_list.append((rightidx, idx_c))
-            self.vertex_location.append([x_c, y_c])
 
-        #
-        # if self.relational_graph:
-        #     self.relational_graph_refactorization(newc)
+            leftparent.cl = self.check_and_add_to_dict(leftparent.cl, newc)
+            rightparent.cr = self.check_and_add_to_dict(rightparent.cr, newc)
+            newc.acl = self.check_and_add_to_dict(newc.acl, leftparent)
+            newc.acr = self.check_and_add_to_dict(newc.acl, rightparent)
 
-        #TODO: integrate with chunk element classes, if possible
         return
 
     def relational_graph_refactorization(self, newc):
@@ -247,16 +349,10 @@ class CG1:
 
 
     def check_chunkcontent_in_M(self,chunkcontent):
-        if len(self.M) == 0:
-            return None
+        if chunkcontent in self.chunks:
+            return self.chunks[chunkcontent]
         else:
-
-            for chunk in list(self.M.keys()):
-                if len(chunk.content.intersect(chunkcontent)) == len(chunkcontent):
-                    return chunk
             return None
-
-
 
     def add_chunk_to_cg_class(self, chunkcontent):
         """chunk: nparray converted to tuple format
@@ -290,48 +386,54 @@ class CG1:
 
     def checkcontentoverlap(self, content):
         '''check of the content is already contained in one of the chunks'''
-        for chunk in self.chunks:
-            if chunk.contentagreement(content):#
-                return chunk
-        return None
+        if content in self.chunks:
+            return self.chunks[content]
+        else:
+            return None
 
-    def checkcoincidingconcat(self):
-        # iterate through all combinations of adjacency matrix
-        return
-
-    def chunking_reorganization(self, previdx, currentidx, cat, dt):
+    def chunking_reorganization(self, prevkey, currentkey, cat, dt):
         ''' Reorganize marginal and transitional probability matrix when a new chunk is created by concatinating prev and current '''
-        prev = self.chunks[previdx]
-        current = self.chunks[currentidx]
+        prev = self.chunks[prevkey]
+        current = self.chunks[currentkey]
         """Model hasn't seen this chunk before:"""
-        chunk = self.checkcontentoverlap(cat.content)
+        chunk = self.checkcontentoverlap(cat.key)
         if chunk is None:
             # add concatinated chunk to the network
             # TODO： add chunk to vertex
-            self.add_chunk(cat, leftidx=previdx, rightidx=currentidx)
+            self.add_chunk(cat, leftkey=prevkey, rightkey=currentkey)
             # iterate through all chunk transitions that could lead to the same concatination chunk
-            cat.count = prev.adjacency[dt][currentidx] # need to add estimates of how frequent the joint frequency occurred
-            cat.adjacency = copy.deepcopy(current.adjacency)
-            # iterate through chunk organization to see if there are other pathways that arrive at the same chunk
-            for _prevck in self.chunks:
-                _previdx = _prevck.index
-                for _dt in list(_prevck.adjacency.keys()):
-                    for _postidx in list(_prevck.adjacency[_dt].keys()):
-                        _postck = self.chunks[_postidx]
-                        if _previdx != previdx and _postidx != currentidx:
-                            _cat = combinechunks(_previdx, _postidx, _dt, self)
-                            if _cat != None:
-                                if _cat.contentagreement(cat.content): # the same chunk
-                                    cat.count = cat.count + self.chunks[_previdx].adjacency[_dt][_postidx]
-                                    self.chunks[_previdx].adjacency[_dt][_postidx] = 0
-                                    # TODO: transition should also be updated accordingly
-        else:
-            chunk.count = chunk.count + prev.adjacency[dt][currentidx]  # need to add estimates of how frequent the joint frequency occurred
+            cat.count = prev.adjacency[dt][currentkey] # need to add estimates of how frequent the joint frequency occurred
+            prev.count = prev.count - cat.count # reduce one sample observation from the previous chunk
+            current.count = current.count - cat.count
+            prev.adjacency[current][dt] = 0
 
-        # prev.adjacency[dt][currentidx] = prev.adjacency[dt][currentidx] - 1
-        prev.adjacency[dt][currentidx] = 0
-        prev.count = prev.count - 1
-        current.count = current.count - 1
+            cat.adjacency = copy.deepcopy(current.adjacency)
+            # check if there are other pathways that arrive at the same chunk
+            ck = cat
+            while len(ck.acl) > 0:
+                ck = np.random.choice(ck.acl.keys())
+
+            while len(ck.cl) > 0:
+                for _cr in ck.adjacency:
+                    for _dt in ck[_cr]:
+                        if _cr != currentkey and ck.key != prevkey and _dt != dt:
+                            _cat = combinechunks(ck.key, _cr, _dt, self)
+                            if _cat!=None:
+                                if _cat==cat:
+                                    # TODO: may need to merge nested dictionary
+                                    _cat_count =  self.chunks[ck].adjacency[_cr][_dt]
+                                    cat.count = cat.count + _cat_count
+                                    ck.count = ck.count - _cat_count
+                                    _cr.count = _cr.count - _cat_count
+                                    ck.adjacency[_cr][_dt] = 0
+
+                ck = ck.cl
+        else:
+            chunk.count = chunk.count + prev.adjacency[dt][currentkey]  # need to add estimates of how frequent the joint frequency occurred
+            prev.count = prev.count - cat.count# reduce one sample observation from the previous chunk
+            current.count = current.count - cat.count
+            prev.adjacency[current][dt] = 0
+
         return
 
     def evaluate_merging_gain(self, intersect, intersect_chunks):
@@ -399,6 +501,7 @@ class CG1:
         # TODO: add new variable chunk here.
         chk_var = Chunk([chk, var])# an agglomeration of chunk with variable is created
 
+
         return
 
     def pop_transition_matrix(self, element):
@@ -421,10 +524,49 @@ class CG1:
     def print_size(self):
         return len(self.vertex_list)
 
-    def imagination(self, n, sequential = False, spatial = False,spatial_temporal = False):
+    def sample_from_distribution(self, states, prob):
+        """
+        states: a list of chunks
+        prob: another list that contains the probability"""
+        prob = [k / sum(prob) for k in prob]
+        cdf = [0.0]
+        for s in range(0, len(states)):
+            cdf.append(cdf[s] + prob[s])
+        k = np.random.rand()
+        for i in range(1, len(states) + 1):
+            if (k >= cdf[i - 1]):
+                if (k < cdf[i]):
+                    return states[i - 1], prob[i - 1]
+
+    def sample_marginal(self):
+        prob = []
+        states = []
+        for chunk in list(self.chunks):
+            prob.append(chunk.count)
+            states.append(chunk)
+        prob = [k / sum(prob) for k in prob]
+        return self.sample_from_distribution(states, prob)
+
+    def imagination1d(self, seql = 10):
+        ''' Imagination on one dimensional sequence '''
+        self.convert_chunks_in_arrays() # convert chunks to np arrays
+        img = np.zeros([1,1,1])
+        l = 0
+        while l< seql:
+            chunk,p = self.sample_marginal()
+            chunkarray = chunk.arraycontent
+            img = np.concatenate((img,chunkarray), axis=0)
+            print('sampled chunk array is ', chunkarray, ' p = ', p)
+            print('imaginative sequence is ', img)
+            l = l + chunkarray.shape[0]
+        return img[1:seql, :, :]
+
+
+    def imagination(self, n, sequential=False, spatial=False, spatial_temporal = False):
         ''' Independently sample from a set of chunks, and put them in the generative sequence
             Obly support transitional probability at the moment
             n+ temporal length of the imagiantion'''
+
         marginals = self.M
         s_last_index = np.random.choice(np.arange(0,len(list(self.M.keys())),1))
         s_last = list(self.M.keys())[s_last_index]
@@ -433,7 +575,7 @@ class CG1:
         H, W = s_last.shape[1:]
         if sequential:
             L = 20
-            produced_sequence = np.zeros([n+ L, H, W])
+            produced_sequence = np.zeros([n + L, H, W])
             produced_sequence[0:s_last.shape[0], :, :] = s_last
             t = s_last.shape[0]
             while t <= n:
@@ -472,3 +614,7 @@ class CG1:
 
         else:
             return None
+
+
+
+

@@ -21,7 +21,6 @@ def learning_and_update_mtx(current_chunks, t, previous_chunk_boundary_record, c
         for i in range(0, min(temporal_length_of_current_chunk + 1,
                               len(previous_chunk_boundary_record))):  # iterate through adjacency in
             # time, i steps before
-            # TODO: check the relation between -i-1 and t - i
             # candidate_adjacent_chunks = previous_chunk_boundary_record[max(0, t-i)]  # start from the closest to the
             candidate_adjacent_chunks = previous_chunk_boundary_record[-i - 1]  # start from the closest
             # to the furtherest.
@@ -34,37 +33,166 @@ def learning_and_update_mtx(current_chunks, t, previous_chunk_boundary_record, c
 
     return chunk_termination_time, cg
 
+def hcm_rational_v1(arayseq, cg):
+    seql, H, W = arayseq.shape
+    cg.update_hw(H, W)
+    seq, seql = convert_sequence(arayseq)  # loaded with the 0th observation
+    seq = set(seq)
+    seq = set([(0,0,0,1),(0,0,1,3),(0,2,2,2), (1,0,0,1),(1,0,1,3),(1,2,2,2), (2,0,0,1),(2,0,1,3),(2,2,2,2)])
+    thischunk = Chunk([(0,0,0,1),(0,0,1,3),(0,2,2,2)], H=1, W=1)
+    cont = list(thischunk.content)
+    for obs in seq:
+        inseq = False
+        matching_elements = set()
+
+        if obs[3] == cont[0][3]:
+            t, x, y = obs[0] - cont[0][0], obs[1] - cont[0][1], obs[2] - cont[0][2]
+            inseq = True
+            matching_elements.add(obs)
+
+            i = 1
+            while i < len(cont) and inseq:
+                point = cont[i]
+                translated_chunk_point = (point[0] + t, point[1] + x, point[2] + y, point[3])
+                if translated_chunk_point not in seq:
+                    inseq = False
+                else:
+                    matching_elements.add(translated_chunk_point)
+                i = i + 1
+
+        if inseq:
+            print('t = ', t)
+            # seq.difference_update(matching_elements)
+    return
 
 
-def learning_and_update(current_chunks_idx, chunk_record, cg, t):
+def hcm_rational(arayseq, cg, maxIter=20):
+    """
+    returns chunking graph based on rational chunk learning
+
+            Parameters:
+                    arayseq(ndarray): Observational Sequences
+                    cg (CG1): Chunking Graph
+
+            Returns:
+                    cg (CG1): Learned Representation from Data
+    """
+    seql, H, W = arayseq.shape
+    cg.update_hw(H, W)
+    seq_over = False
+    seqO, seql = convert_sequence(arayseq[0:1, :, :])  # loaded with the 0th observation
+
+    Iter = 0
+    independence = False
+    while independence == False and Iter <= maxIter:
+        seq = seqO  # reset the sequence
+        cg.empty_counts()  # empty out all the counts before the next sequence parse
+        chunk_record = {}  # chunk ending time, and which chunk is it.
+        t = 0
+        Buffer = buffer(
+            t, seqO, seql, arayseq.shape[0]
+        )  # seql: length of the current parsing buffer
+        maxchunksize = cg.getmaxchunksize()
+        print("============ empty out sequence ========== ")
+        while seq_over == False:
+            # identify latest ending chunks
+            current_chunks, cg, dt, seq, chunk_record = identify_latest_chunks(
+                cg, seq, chunk_record, Buffer.t
+            )  # chunks
+
+            cg = learning_and_update(
+                current_chunks, chunk_record, cg, Buffer.t)
+
+            maxchunksize = cg.getmaxchunksize()
+            seq = Buffer.refactor(seq, dt)
+            Buffer.reloadsize = maxchunksize + 1
+            Buffer.checkreload(arayseq)
+            seq_over = Buffer.checkseqover()
+        print([ck.count for ck in cg.chunks])
+
+        independence = cg.independence_test()
+        cg = rational_learning(cg, n_update=10)
+        print("Average Encoding Length is            ER = ", cg.eval_avg_encoding_len())
+        seq_over = False
+        Iter = Iter + 1
+
+    return cg, chunk_record
+
+
+
+
+def rational_learning(cg, n_update=10):
+    """ given a learned representation, update chunks based on rank of joint occurrence frequency and hypothesis tests
+            Parameters:
+                n_update: the number of concatinations made based on the pre-existing cg records
+            Returns:
+                cg: chunking graph with empty chunks
+    """
+    candidancy_pairs = (
+        []
+    )  # iterate through all chunk pairs and find the chunks with the biggest candidancy
+
+
+    for _prevck in cg.chunks: # this iteration will be horribly slow.
+        _previdx = _prevck.index
+        for _postidx in _prevck.adjacency:
+            for _dt in _prevck.adjacency.keys():
+                _postck = cg.chunks[_postidx]
+                _cat = combinechunks(_previdx, _postidx, _dt, cg)
+                # hypothesis test
+                if (
+                    cg.hypothesis_test(_previdx, _postidx, _dt) == False
+                ):  # reject null hypothesis
+                    candidancy_pairs.append(
+                        [
+                            (_previdx, _postidx, _cat, _dt),
+                            _prevck.adjacency[_dt][_postidx],
+                        ]
+                    )
+
+    candidancy_pairs.sort(key=lambda tup: tup[1], reverse=True)
+    print(candidancy_pairs)
+
+    # number of chunk combinations allowed.
+    for i in range(0, n_update):
+        prev_idx, current_idx, cat, dt = candidancy_pairs[i][0]
+        cg.chunking_reorganization(prev_idx, current_idx, cat, dt)
+
+        if i > len(candidancy_pairs):
+            break
+    return cg
+
+
+def learning_and_update(current_chunks, chunk_record, cg, t):
     '''
     Update transitions and marginals and decide to chunk
     t: finishing parsing at time t
     current_chunks_idx: the chunks ending at the current time point
     chunk_record: boundary record of when the previous chunks have ended.
     TODO: Look backward and around to update transition according to chunk relations. '''
+    n_t = 1# 2
     if len(chunk_record)>1:
-        for chunk_idx in current_chunks_idx:
+        for chunk in current_chunks:
             delta_t = 0 # the difference between the end of the current chunk and the end of the previous chunks
-            temporal_length_chunk = cg.chunks[chunk_idx].T
-            while delta_t <= temporal_length_chunk+1+2 and len(chunk_record) > 1:# looking backward to find, padding length
+            temporal_length_chunk = cg.chunks[chunk].T
+            while delta_t <= temporal_length_chunk+n_t and len(chunk_record) > 1:# looking backward to find, padding length
                 # adjacent chunks
                 chunkendtime  = t - delta_t
                 if chunkendtime in list(chunk_record.keys()):
                     previous_chunks = chunk_record[chunkendtime]
                     # current_chunk_starting_time = t - temporal_length_of_current_chunk + 1  # the "current chunk" starts at:
-                    for prev_idx, _ in previous_chunks:
-                        samechunk = prev_idx==chunk_idx and delta_t==0
-                        if not samechunk and cg.chunks[prev_idx].variable == []:# do not check variable chunks
-                            # print('check adjacency: ', prev_idx, chunk_idx )
-                            combined_chunk, dt = check_adjacency(prev_idx, chunk_idx, delta_t, t, cg)
+                    for prev in previous_chunks:
+                        samechunk = prev == chunk and delta_t == 0
+                        if not samechunk and cg.chunks[prev].entailment == []:# do not check variable chunks
+                            combined_chunk, dt = adjacency(prev, chunk, delta_t, t, cg)
                             if combined_chunk is not None:
                                 # TODO: update variables associated with specific chunks as well
                                 # if the two chunks are adjacent to each other
-                                cg.chunks[prev_idx].update_transition(chunk_idx, dt)
-                                cg, chunked = threshold_chunking(prev_idx, chunk_idx, combined_chunk, dt, cg)
+                                cg.chunks[prev].update_transition(chunk, dt)
+                                cg, chunked = threshold_chunking(prev, chunk, combined_chunk, dt, cg)
                 delta_t = delta_t + 1
     return cg
+
 
 
 def threshold_chunking_mtx(prev, current, combined_chunk, dt, cg):
@@ -92,14 +220,16 @@ def threshold_chunking_mtx(prev, current, combined_chunk, dt, cg):
                             if ncr !=cr:
                                 op0p0 = op0p0 + T[ncl][dt][ncr]
         # if any cell contains less than 5 observations, need to
-        if ep0p0 <=3 or ep1p1 <=3 or ep1p0 <=3 or ep0p1 <=3:
+        if ep0p0 <=1 or ep1p1 <=1 or ep1p0 <=1 or ep0p1 <=1:
             print('not enough observations')
             return True # cannot continute the test because of lack of sample size
 
         _, pvalue = stats.chisquare([op1p1,op1p0,op0p1,op0p0],f_exp=[ep1p1,ep1p0,ep0p1,ep0p0],ddof=1)
+        print('p = ', pvalue)
         if pvalue == 0.0:
             print('check')
         if pvalue < 0.05:
+
             return False # reject independence hypothesis, there is a correlation
         else:
             return True
@@ -121,7 +251,7 @@ def threshold_chunking_mtx(prev, current, combined_chunk, dt, cg):
                     if chunk_f[prev] > N:
                         if chunk_pair_f[prev][str(dt)][current] > N:  # strangely, this number affects the chunking behavior a
                             # lot.
-                            # if hypothesis_test(prev,current,cg.M,cg.T,str(dt),cg.zero) == False:
+                            #if hypothesis_test(prev,current,cg.M,cg.T,str(dt),cg.zero) == False:
                             satisfy_criteria = True
 
         except(KeyError):
@@ -140,61 +270,25 @@ def threshold_chunking_mtx(prev, current, combined_chunk, dt, cg):
 
 
 
-def threshold_chunking(prev_idx, current_idx, combined_chunk, dt, cg):
+def threshold_chunking(prev_key, current_key, combined_chunk, dt, cg):
     """combined_chunk: a new chunk instance"""
-    def hypothesis_test(clidx,cridx,cg,dt):
-        cl = cg.chunks[clidx]
-        cr = cg.chunks[cridx]
-        assert len(cl.adjacency)>0
-        assert dt in list(cl.adjacency.keys())
-        N = cg.get_N()
-
-        # Expected
-        ep1p1 = cl.count/N*cr.count
-        ep1p0 = cl.count/N*(N - cr.count)
-        ep0p1 = (N - cl.count)/N*cr.count
-        ep0p0 = (N - cl.count)/N*(N - cr.count)
-
-        # Observed
-        op1p1 = cl.adjacency[dt][cridx]
-        op1p0 = cl.get_N_transition(dt) - cl.adjacency[dt][cridx]
-        op0p1 = 0
-        op0p0 = 0
-        # TODO: need to take zero out of the picture
-        for ncl in list(cg.chunks):# iterate over p0, which is the cases where cl is not observed
-            if ncl != cl:
-                if dt in list(ncl.adjacency.keys()):
-                    if cridx in list(ncl.adjacency[dt].keys()):
-                        op0p1 = op0p1 + ncl.adjacency[dt][cridx]
-                        for ncridx in list(ncl.adjacency[dt].keys()):
-                            if ncridx != cr:
-                                op0p0 = op0p0 + ncl.adjacency[dt][ncridx]
-
-        _, pvalue = stats.chisquare([op1p1,op1p0,op0p1,op0p0], f_exp=[ep1p1,ep1p0,ep0p1,ep0p0], ddof=1)
-        # print('p value is ', pvalue)
-        if pvalue < 0.005:
-            return False # reject independence hypothesis, there is a correlation
-        else:
-            return True
 
     """cg: chunking graph
     learning function manipulates when do the chunk update happen
     chunks when some combination goes beyond a threshold"""
     chunked = False  # unless later it was verified to fit into the chunking criteria.
     cat = combined_chunk
-    chunk_f = cg.chunks
-    N = 10
+    N = 5
     # the prevchunkindex needs to be in the list of all of the chunks
-    prev = cg.chunks[prev_idx]
+    prev = cg.chunks[prev_key]
     if dt in list(prev.adjacency.keys()):
-        if current_idx in list(prev.adjacency[dt].keys()):
+        if current_key in list(prev.adjacency[dt].keys()):
             if prev.count > N:
-                if prev.adjacency[dt][current_idx] > N:
+                if prev.adjacency[dt][current_key] > N:
                     # strangely, this number affects the chunking behavior a lot.
-                    if hypothesis_test(prev_idx, current_idx, cg,dt) == False: # reject null hypothesis
+                    if cg.hypothesis_test(prev_key, current_key,dt) == False:# reject null hypothesis
                         chunked = True
-                        # TODO: rework the chunking organization for this particular chunking graph
-                        cg.chunking_reorganization(prev_idx, current_idx, cat, dt)
+                        cg.chunking_reorganization(prev_key, current_key, cat, dt)
 
     return cg, chunked
 
@@ -219,7 +313,7 @@ def checkequal(chunk1,chunk2):
 def evaluatesimilarity(chunk1, chunk2):
     return chunk1.checksimilarity(chunk2)
 
-def check_adjacency(prev_idx, post_idx, time_diff, t, cg):
+def adjacency(prev_key, post_key, time_diff, t, cg):
     # TODO: what if prev_idx and post_idx contains variables?
     # check adjacency should only check chunks with no variables, in other words, concrete chunks,
     # and their ancestors are tagged with this variable relationship
@@ -230,120 +324,119 @@ def check_adjacency(prev_idx, post_idx, time_diff, t, cg):
     # chunk ends at the point of the end_point_chunk
     # candidate chunk ends at the point of the end_point_candidate_chunk
 
-    if prev_idx == post_idx:
+    if prev_key == post_key:
         return None, -100 # do not chunk a chunk by itself.
-    elif cg.chunks[prev_idx].conflict(cg.chunks[post_idx]): # chunks have conflicting content
-        return None, -100
     else:
-        prev = cg.chunks[prev_idx]
-        post = cg.chunks[post_idx]
+        prev = cg.chunks[prev_key]
+        post = cg.chunks[post_key]
         e_post = t  # inclusive
         e_prev = t - time_diff  # inclusive
         s_prev = e_prev - prev.T  # inclusive
         s_post = e_post - post.T  # inclusive
-        dt = e_prev - s_post
-        delta_t = e_prev - max(s_post, s_prev)  # the overlapping temporal length between the two chunks
-
-        min_s_t = min(s_post, s_prev)  # minimum starting time
-        max_e_t = max(e_post, e_prev)  # maximal ending time
-        max_s_t = max(s_post, s_prev)  # latest starting time
-        min_e_t = min(e_post, e_prev)  # earliest time
-        t_chunk = max(e_post, e_prev) - min(e_post, e_prev) + delta_t + max(s_post, s_prev) - min(s_post,
-                                                                                                  s_prev)  # the stretching temporal length of the two chunks
-        # initiate a new chunk.
-        prevcontent = prev.content.copy()
-        postcontent = post.content.copy()
-
-        if s_prev > s_post:
-            # shift content in time:
-            prev_shift = s_prev - s_post
-            newprevcontent = set()
-            for msrm in prevcontent:
-                lmsrm = list(msrm)
-                lmsrm[0] = lmsrm[0] + prev_shift  # pad the time dimension
-                newprevcontent.add(tuple(lmsrm))
-            prevcontent = newprevcontent
-
-        prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
-        prevchunk.T = prev.T
-        prevchunk.H = prev.H
-        prevchunk.W = prev.W
-
-        if s_prev<s_post:
-            post_shift = s_post - s_prev
-            newpostcontent = set()
-            for msrm in postcontent:
-                lmsrm = list(msrm)
-                lmsrm[0] = lmsrm[0] + post_shift
-                newpostcontent.add(tuple(lmsrm))
-            postcontent = newpostcontent
-
-        postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
-        postchunk.T = post.T
-        postchunk.H = post.H
-        postchunk.W = post.W
-        concat_chunk = prevchunk.concatinate(postchunk)
-        if concat_chunk != None:
-            pass
-            # print('concat_chunk ', concat_chunk.content)
+        if  s_post - s_prev > 0 and ~prev.check_adjacency(post,dt = s_post - s_prev):
+            return None, -100
+        elif s_post - s_prev < 0 and ~post.check_adjacency(prev, dt = s_prev - s_post):
+            return None, -100
         else:
-            pass
-            # print(' no concatination ')
-    return concat_chunk, dt
+            dt = e_prev - s_post
+            # delta_t = e_prev - max(s_post, s_prev)  # the overlapping temporal length between the two chunks
+            # min_s_t = min(s_post, s_prev)  # minimum starting time
+            # max_e_t = max(e_post, e_prev)  # maximal ending time
+            # max_s_t = max(s_post, s_prev)  # latest starting time
+            # min_e_t = min(e_post, e_prev)  # earliest time
+            # t_chunk = max(e_post, e_prev) - min(e_post, e_prev) + delta_t + max(s_post, s_prev) - min(s_post,
+            #                                                                                           s_prev)  # the stretching temporal length of the two chunks
+            # initiate a new chunk.
+            prevcontent = prev.content.copy()
+            postcontent = post.content.copy()
+
+            if s_prev > s_post:
+                # shift content in time:
+                prev_shift = s_prev - s_post
+                newprevcontent = set()
+                for msrm in prevcontent:
+                    lmsrm = list(msrm)
+                    lmsrm[0] = lmsrm[0] + prev_shift  # pad the time dimension
+                    newprevcontent.add(tuple(lmsrm))
+                prevcontent = newprevcontent
+
+            prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
+            prevchunk.T = prev.T
+            prevchunk.H = prev.H
+            prevchunk.W = prev.W
+
+            if s_prev<s_post:
+                post_shift = s_post - s_prev
+                newpostcontent = set()
+                for msrm in postcontent:
+                    lmsrm = list(msrm)
+                    lmsrm[0] = lmsrm[0] + post_shift
+                    newpostcontent.add(tuple(lmsrm))
+                postcontent = newpostcontent
+
+            postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
+            postchunk.T = post.T
+            postchunk.H = post.H
+            postchunk.W = post.W
+            concat_chunk = prevchunk.concatinate(postchunk, check = False)
+        return concat_chunk, dt
 
 
-def combinechunks(prev_idx, post_idx, dt, cg):
+def combinechunks(prev_key, post_key, dt, cg):
     # time_diff: difference between end of the post chunk and the end of the previous chunk
     ''' returns empty matrix if not chunkable '''
     # update transitions between chunks with a temporal proximity
     # chunk ends at the point of the end_point_chunk
     # candidate chunk ends at the point of the end_point_candidate_chunk
-    # TODO: double check if combine chunks and check adjacency generates the same chunk agglomeration
-    prev = cg.chunks[prev_idx]
-    post = cg.chunks[post_idx]
-    assert post_idx in prev.adjacency[dt].keys()
-    e_prev = 0
-    adj = False
-    l_t_prev = prev.T
-    l_t_post = post.T
-    s_prev = e_prev - l_t_prev  # the exclusive temporal length
-    s_post = e_prev - dt  # start point is inclusive
-    e_post = s_post + l_t_post
-    # dt = e_prev - s_post
-    delta_t = e_prev - max(s_post, s_prev)# the overlapping temporal length between the two chunks
-    t_chunk = max(e_post, e_prev) - min(e_post, e_prev) + delta_t + max(s_post, s_prev) - min(s_post, s_prev)# the stretching temporal length of the two chunks
-    if t_chunk == l_t_prev and t_chunk == l_t_post and checkequal(prev, post):
-        return None# do not chunk a chunk by itself.
+    if prev_key == post_key:
+        return None, -100 # do not chunk a chunk by itself.
     else:
-        # initiate a new chunk.
-        prevcontent = prev.content.copy()
-        postcontent = post.content.copy()
-        if s_prev > s_post: # post start first
-            # shift content in time:
-            prev_shift = s_prev - s_post
-            newprevcontent = set()
-            for msrm in prevcontent:
-                lmsrm = list(msrm)
-                lmsrm[0] = lmsrm[0] + prev_shift  # pad the time dimension
-                newprevcontent.add(tuple(lmsrm))
-        prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
-        prevchunk.T = prev.T
-        prevchunk.H = prev.H
-        prevchunk.W = prev.W
+        # TODO: double check if combine chunks and check adjacency generates the same chunk agglomeration
+        prev = cg.chunks[prev_key]
+        post = cg.chunks[post_key]
+        e_prev = 0
+        adj = False
+        l_t_prev = prev.T
+        l_t_post = post.T
+        s_prev = e_prev - l_t_prev  # the exclusive temporal length
+        s_post = e_prev - dt  # start point is inclusive
+        e_post = s_post + l_t_post
+        # dt = e_prev - s_post
+        delta_t = e_prev - max(s_post, s_prev)# the overlapping temporal length between the two chunks
+        t_chunk = max(e_post, e_prev) - min(e_post, e_prev) + delta_t + max(s_post, s_prev) - min(s_post, s_prev)# the stretching temporal length of the two chunks
 
-        if s_prev < s_post: # prev start first
-            post_shift = s_post - s_prev
-            newpostcontent = set()
-            for msrm in postcontent:
-                lmsrm = list(msrm)
-                lmsrm[0] = lmsrm[0] + post_shift
-                newpostcontent.add(tuple(lmsrm))
-            postcontent = newpostcontent
-        postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
-        postchunk.T = post.T
-        postchunk.H = post.H
-        postchunk.W = post.W
-    return prevchunk.concatinate(postchunk)
+        if t_chunk == l_t_prev and t_chunk == l_t_post and checkequal(prev, post):
+            return None# do not chunk a chunk by itself.
+        else:
+            # initiate a new chunk.
+            prevcontent = prev.content.copy()
+            postcontent = post.content.copy()
+            if s_prev > s_post: # post start first
+                # shift content in time:
+                prev_shift = s_prev - s_post
+                newprevcontent = set()
+                for msrm in prevcontent:
+                    lmsrm = list(msrm)
+                    lmsrm[0] = lmsrm[0] + prev_shift  # pad the time dimension
+                    newprevcontent.add(tuple(lmsrm))
+            prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
+            prevchunk.T = prev.T
+            prevchunk.H = prev.H
+            prevchunk.W = prev.W
+
+            if s_prev < s_post: # prev start first
+                post_shift = s_post - s_prev
+                newpostcontent = set()
+                for msrm in postcontent:
+                    lmsrm = list(msrm)
+                    lmsrm[0] = lmsrm[0] + post_shift
+                    newpostcontent.add(tuple(lmsrm))
+                postcontent = newpostcontent
+            postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
+            postchunk.T = post.T
+            postchunk.H = post.H
+            postchunk.W = post.W
+        return prevchunk.concatinate(postchunk)
 
 def check_adjacency_mtx(prev, post, end_point_prev, end_point_post):
     '''returns empty matrix if not chunkable'''
@@ -606,7 +699,7 @@ def pop_chunk_in_seq_full(chunk_idx, seqc,cg):#_c_
     chunk = cg.chunks[chunk_idx]
     content = chunk.content
     for tup in content:# remove chunk content one by one from the sequence
-        seqc.remove(tup)
+        seqc.remove(tup) # O(1)
     return seqc
 
 
@@ -675,13 +768,24 @@ def identify_biggest_chunk(cg, seqc, checktype = 'full'):#_c_full
     maxsizematch = 0
     maxchunk = None
     # TODO: dictionary encoding of the overlapping chunk components.
-    for chunk in reversed(cg.chunks):# identify one chunk in sequence at one time...
-        matchsize, match_len = chunkidentification(chunk, seqc)# do the specific match by default
-        # TODO: a better algorithm shall be one without checking all the time, but finds the biggest chunk anyways.
-        # TODO: the search or identification process can be made more efficient by a top-down process
-        if matchsize > maxsizematch:
-            maxsizematch = matchsize
-            maxchunk = chunk.index
+
+    currentlist = cg.ancestors
+    ancestor = None
+    if len(cg.ancestors) >0:
+        identified = False
+        while currentlist !=[] or identified:
+            identified = False
+            for chunk in currentlist: # what if there are multiple chunks that satisfies the relation?
+                if chunk.content.isin(seqc):
+                    chunk.acl[ancestor] = chunk.acl[ancestor] + 1
+                    if ancestor is not None:
+                        ancestor.cl[chunk] = ancestor.cl[chunk] + 1
+                    maxchunk = chunk
+                    currentlist = chunk.cl
+                    identified = True
+                    ancestor = chunk
+                    break
+
     # remove chunk from seq
     if maxchunk is None:
         maxchunk, cg = identify_singleton_chunk(cg, seqc)
@@ -696,25 +800,23 @@ def identify_singleton_chunk(cg, seqc):#_c_
     chunkcontent = [seqc[0]]
     chunk = Chunk(chunkcontent, H=cg.H, W=cg.W)
     cg.add_chunk(chunk)
+    cg.ancestors= [chunk] # point from content to chunk
     return chunk.index, cg
 
 def updatechunk(chunk,explainchunk,chunk_record,cg, max_chunk_idx,t):
     if chunk.abstraction==[]:
-        explainchunk.append((chunk.index, int(chunk.T), list(cg.visible_chunk_list[chunk.index])))
+        explainchunk.append(chunk.key, chunk.T)
+        cg.chunks[chunk.key].update()  # update chunk count among the currently identified chunks
         chunk_record = updatechunkrecord(chunk_record, chunk.index, int(cg.chunks[chunk.index].T) + t, cg)
-        cg.chunks[chunk.index].update()  # update chunk count among the currently identified chunks
         return explainchunk, cg, chunk_record
-    else:
-        for ck in chunk.abstraction:
-            updatechunk(ck, explainchunk, chunk_record, cg, max_chunk_idx, t)
 
     chunk = cg.chunks[max_chunk_idx]
 
     while chunk.abstraction!=[]:
         for ck in chunk.abstraction:
-            explainchunk.append((ck.index, int(ck.T), list(cg.visible_chunk_list[ck.index])))
+            explainchunk.append(chunk.key, ck.T)
             chunk_record = updatechunkrecord(chunk_record, ck.index, int(cg.chunks[ck.index].T) + t, cg)
-            cg.chunks[ck.index].update()  # update chunk count among the currently identified chunks
+            cg.chunks[ck.key].update()  # update chunk count among the currently identified chunks
     # trace back to the abstraction chunks
 
     return
@@ -768,8 +870,8 @@ def identify_one_chunk_approximate(cg, seqc, explainchunk, chunk_record, t):
 
     max_chunk_idx = maxchunk
     explainchunk.append((max_chunk_idx, int(cg.chunks[max_chunk_idx].T), list(cg.visible_chunk_list[max_chunk_idx])))
-    chunk_record = updatechunkrecord(chunk_record, max_chunk_idx, int(cg.chunks[max_chunk_idx].T) + t,cg)
-    cg.chunks[max_chunk_idx].update()  # update chunk count among the currently identified chunks
+    chunk_record = updatechunkrecord(chunk_record, max_chunk_idx, int(cg.chunks[max_chunk_idx].T) + t, cg)
+    cg.chunks[maxchunk.key].update()  # update chunk count among the currently identified chunks
     return cg, seqc, chunk_record, explainchunk
 
 def check_seq_explained(seqc):#_c_
@@ -779,14 +881,22 @@ def check_seq_explained(seqc):#_c_
 
 
 
-def updatechunkrecord(chunk_record, ckidx,endtime,cg):
-    p = cg.chunks[ckidx].count / endtime
-    if endtime not in list(chunk_record.keys()):
-        chunk_record[endtime] = [(ckidx, p)]
+def updatechunkrecord(chunk_record, ckidx,endtime,cg, freq = True):
+    if freq == True:
+        if endtime not in list(chunk_record.keys()):
+            chunk_record[endtime] = [(ckidx, cg.chunks[ckidx].count)]
+        else:
+            if ckidx not in chunk_record[endtime]: # one chunk can only be identified at one time point. when there are
+                # multiple points that correspond to the same chunk, this chunk is identified as occurring once.
+                chunk_record[endtime].append((ckidx, cg.chunks[ckidx].count))
     else:
-        if ckidx not in chunk_record[endtime]: # one chunk can only be identified at one time point. when there are
-            # multiple points that correspond to the same chunk, this chunk is identified as occurring once.
-            chunk_record[endtime].append((ckidx, p))
+        p = cg.chunks[ckidx].count / endtime
+        if endtime not in list(chunk_record.keys()):
+            chunk_record[endtime] = [(ckidx, p)]
+        else:
+            if ckidx not in chunk_record[endtime]: # one chunk can only be identified at one time point. when there are
+                # multiple points that correspond to the same chunk, this chunk is identified as occurring once.
+                chunk_record[endtime].append((ckidx, p))
     return chunk_record
 
 
@@ -1089,9 +1199,10 @@ def save_chunk_record(chunkrecord, cg):
         pickle.dump(df, f)
     return
 
-def hcm_learning(arayseq, cg):
+def hcm_learning(arayseq, cg, learn = True):
     '''Sequence is an n-d array
-        Note that sequence should not be too long, otherwise subtraction would take a while for the algorithm'''
+        Note that sequence should not be too long, otherwise subtraction would take a while for the algorithm
+        when the learning handle is false, then only parsing, and no chunking will take place '''
     seql, H, W = arayseq.shape
     cg.update_hw(H,W)
     seq_over = False
@@ -1104,11 +1215,19 @@ def hcm_learning(arayseq, cg):
     data['n_chunk'] = []
     data['chunk size'] = []
 
-    seq, seql = convert_sequence(arayseq[0:1,:,:])# loaded with the 0th observation
-    t = 0
-    Buffer = buffer(t, seq, seql, arayseq.shape[0])
     # seql: length of the current parsing buffer
     maxchunksize = 0
+    if len(cg.chunks) > 0:
+        sizes = []
+        for ck in cg.chunks:
+            sz = ck.volume
+            sizes.append(sz)
+            if sz > maxchunksize: maxchunksize = sz
+
+    seq, seql = convert_sequence(arayseq[0:maxchunksize+1, :, :])# loaded with the 0th observation
+    t = 0
+    Buffer = buffer(t, seq, seql, arayseq.shape[0])
+
 
     while seq_over == False:
         currenttime = time.perf_counter()
@@ -1120,19 +1239,18 @@ def hcm_learning(arayseq, cg):
         seq = Buffer.refactor(seq, dt)
 
         # that ends right before t. the last
-        if len(current_chunks_idx)>0:
+        if len(current_chunks_idx)>0 and learn == True:
             cg = learning_and_update(current_chunks_idx, chunk_record, cg, Buffer.t)
 
         learningtime = time.perf_counter() - currenttime
         data, maxchunksize = save_diagnostic_data(data, learningtime, cg, current_chunks_idx, maxchunksize)
         # previous and current chunk
-        cg.forget()
+        if learn == True:
+            cg.forget()
         # seq = Buffer.refactor(seq, current_chunks_idx, cg, dt)
         Buffer.reloadsize = maxchunksize + 1
         Buffer.checkreload(arayseq)
         seq_over = Buffer.checkseqover()
-        if seq_over:
-            print('...')
     return cg, chunk_record
 
 def reload(seq, seql, arraysequence,t, max_chunksize):
@@ -1150,50 +1268,6 @@ def reload(seq, seql, arraysequence,t, max_chunksize):
     seql = seql + min(max_chunksize,relevantarray.shape[0])
     return seq, seql
 
-
-def hcm_rational_learning(sequence, cg):
-    '''parsing and learning are separate processes executed on the sequence'''
-    seql, H, W = sequence.shape
-    cg.update_hw(H,W)
-
-    seq = convert_sequence(sequence)# a list of tuples with time, h, w and their observations in the sequence
-    seq_over = False
-    n_it = 0
-    it_max = 10# maximum number of iteration parameter
-
-    # get a set of minimal chunks to parse the sequence
-    while n_it <= it_max:
-        n_it = n_it + 1
-        # output of parsing: sequence is encoded in chunks: time series, chunk identification, chunks can be overlapping
-        parse_seq(cg)
-        cg = rational_chunk_learning()
-
-    previous_chunk_boundary_record = [] # tuple with (dt, set of chunks)
-    # dt: the time from the end of the previous chunk to the next chunk
-    t = 0
-
-    while seq_over == False:
-
-        currenttime = time.perf_counter()
-        # identify latest ending chunks
-        current_chunks_idx, cg, dt, seq = identify_latest_chunks(cg, seq, previous_chunk_boundary_record)  # chunks
-        print('elapsed time for parsing is ', time.perf_counter() - currenttime)
-        currenttime = time.perf_counter()
-        # that ends right before t. the last
-        if len(current_chunks_idx)>0:
-            cg = learning_and_update(current_chunks_idx, previous_chunk_boundary_record, cg, t)
-        print('elapsed time for learning and update is ', time.perf_counter() - currenttime)
-        currenttime = time.perf_counter()
-
-        # previous and current chunk
-        cg.forget()
-
-        t = t + dt
-        # if t >= seql-1:
-        #     seq_over = True
-        if seq == []:
-            seq_over = True
-    return cg
 
 
 def learn_stc_classes(sequence, cg):

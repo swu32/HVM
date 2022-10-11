@@ -931,7 +931,7 @@ def generate_new_chunk(setofchunks):
     vab[0:va.shape[0], :, :] = va
     vab[va.shape[0]:, :, :] = vb
     ab = arr_to_tuple(vab)
-    print(ab,a,b)
+    print('ab = ', ab,' a = ', a,' b = ',b)
     if ab in setofchunks or np.array_equal(a, zero) or np.array_equal(b, zero):
         generate_new_chunk(setofchunks)
     else:
@@ -993,7 +993,7 @@ def overlap_but_different_graph(cgg, n_s, n_d, n_atom):
     for d in range(0, n_d):# iteratively create different chunks from the generative chunk grpah
         # pick random, new combinations
         ab, a, b = generate_new_chunk(setofchunkswithoutzero)
-        while ab in setofchunks or ab in not_allowed_chunks:# keep generating new chunks that is new
+        while ab in setofchunks or ab in not_allowed_chunks:
             ab, a, b = generate_new_chunk(setofchunkswithoutzero)
         constraints.append([ab,a,b])
         setofchunks.append(ab)
@@ -1082,7 +1082,7 @@ def trim_graph(cg, ged):
         trimgraph.M[ke] = trimgraph.M[ke]/SUM
     return trimgraph
 
-def generative_model_random_combination(D=3, n=5):
+def generative_model_random_combination(D=6, n=5):
     """ randomly generate a set of hierarchical chunks
         D: number of recombinations
         n: number of atomic, elemetary chunks"""
@@ -1106,8 +1106,8 @@ def generative_model_random_combination(D=3, n=5):
     for d in range(0, D):
         # pick random, new combinations
         ab, a, b = generate_new_chunk(setofchunkswithoutzero)
-        while ab in setofchunks:# keep generating new chunks that is new
-            ab, a, b = generate_new_chunk(setofchunkswithoutzero)
+        # while ab in setofchunks:# keep generating new chunks that is new
+        #     ab, a, b = generate_new_chunk(setofchunkswithoutzero)
         constraints.append([ab,a,b])
         setofchunks.append(ab)
 

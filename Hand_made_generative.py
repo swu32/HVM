@@ -4,6 +4,18 @@ def simple_seq():
     seq = np.array([[[0]], [[1]], [[2]], [[3]],[[4]],[[5]],[[6]],[[7]],[[8]],[[9]],[[10]],[[11]],[[12]]])
     return seq
 
+def simple_abstraction():
+    seql = 1000
+    seq = np.zeros(shape = (1000,1,1))
+    i = 0
+    while i+3 < seql:
+        seq[i,:,:] = 2
+        seq[i+1,:,:] = np.random.choice([3,4])
+        i = i + 3
+    return seq
+
+
+
 def hierarchy1d():
     cg = Chunking_Graph()
     #================== Initialization Process ==================
