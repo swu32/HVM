@@ -937,39 +937,6 @@ def generate_new_chunk(setofchunks):
     else:
         return ab, a, b
 
-def transfer_graphs_generator(n_atomic = 5, depth = 7):
-
-    graph_pipline = {}
-    graph_pipline['transfer'] = []
-    graph_pipline['nonoverlap'] = []
-    graph_pipline['semioverlapping'] = []
-
-    cg_test = generative_model_random_combination(D=depth, n=n_atomic)
-    graph_pipline['test'] = cg_test
-    print('cg_test ', cg_test.M)
-    # generate transfer graphs
-    for i in range(1,6):
-        n_trim = i
-        trimmed_graph = trim_graph(cg_test, n_trim)
-        graph_pipline['transfer'].append((n_trim, trimmed_graph))
-        print('trimmed_graph ', i, trimmed_graph.M)
-
-    # test nonoverlapping graph
-    for i in range(1,6):
-        n_new_chunk = i
-        nonovelap_graph =  nonoverlapping_graph(cg_test, n_new_chunk, n_atomic)
-        graph_pipline['nonoverlap'].append((n_new_chunk, nonovelap_graph))
-        print('nonoverlapping graph ',i, nonovelap_graph.M)
-
-    for n_s in range(1,4):
-        for n_d in range(1,4):
-            # testing semi overlapping graph
-            obdcg = overlap_but_different_graph(cg_test, n_s, n_d, n_atomic)
-            graph_pipline['semioverlapping'].append((n_s, n_d, obdcg))
-            print('semioverlapping graph with n_s = ', n_s, ' n_d ', n_d, ' ',  obdcg.M)
-
-    return graph_pipline
-
 
 def overlap_but_different_graph(cgg, n_s, n_d, n_atom):
     """ n_s: the number of shared chunks other than the atomic chunks

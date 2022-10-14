@@ -14,12 +14,12 @@ class Chunk:
         # TODO: make sure that there is no redundency variable
         self.content = set(chunkcontent)
         self.key = tuple(sorted(self.content))
+        self.count = count  #
         self.T = int(max(np.array(chunkcontent)[:, 0]) + 1)  # those should be specified when joining a chunking graph
         self.H = H
         self.W = W
         self.index = None
         self.vertex_location = None
-        self.count = count  #
         self.pad = pad  # boundary size for nonadjacency detection, set the pad to not 1 to enable this feature.
         self.adjacency = {}
         self.birth = None  # chunk creation time
@@ -53,12 +53,10 @@ class Chunk:
         return not(self == other)
 
 
-
-
     def get_full_content(self):
         '''returns a list of all possible content that this chunk can take'''
         self.possible_path = []
-        self.find_content_recursive(self, [])
+        self.get_content_recursive(self, [])
         return self.possible_path
 
     def get_content_recursive(self, node, path):
@@ -98,7 +96,7 @@ class Chunk:
         return N
 
     def get_index(self):
-        ''' Get index location the nonzero chunk locations in chunk content  '''
+        ''' Get index location the nonzero chunk locations in chunk content '''
         return set(map(tuple, np.array(list(self.content))[:, 0:3]))
 
     def get_index_padded(self):

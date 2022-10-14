@@ -177,8 +177,6 @@ class CG1:
                         ancestor.cl.add(this_chunk.cl)
                         this_chunk.acr.cr.pop(this_chunk)
                         this_chunk.acr = []
-
-
                     for rightkid in this_chunk.cr:
                         this_chunk.cl.__add__(rightkid)
                         rightkid.cl = ancestor# TODO: can add right chunk ancestor to children as well.
@@ -231,10 +229,8 @@ class CG1:
 
     # update graph configuration
     def add_chunk(self, newc, leftkey= None, rightkey = None):
-        # TODO: add time when the chunk is being created
         self.vertex_list.append(newc.key)
         self.chunks[newc.key] = newc # add observation
-
         newc.index = self.chunks.index(newc)
         newc.H = self.H # initialize height and weight in chunk
         newc.W = self.W
@@ -258,7 +254,7 @@ class CG1:
             leftparent.cl = self.check_and_add_to_dict(leftparent.cl, newc)
             rightparent.cr = self.check_and_add_to_dict(rightparent.cr, newc)
             newc.acl = self.check_and_add_to_dict(newc.acl, leftparent)
-            newc.acr = self.check_and_add_to_dict(newc.acl, rightparent)
+            newc.acr = self.check_and_add_to_dict(newc.acr, rightparent)
 
         return
 
@@ -318,11 +314,6 @@ class CG1:
     # def variable_identification():
     #     # identify tree branch structure and calculate the gain of merging
 
-
-
-    def relational_graph_refactorization(self, newc):
-        # find variable amongst chunks
-        return
 
     def check_ancestry(self,chunk,content):
         # check if content belongs to ancestor
@@ -391,14 +382,22 @@ class CG1:
         else:
             return None
 
+
+
+
     def chunking_reorganization(self, prevkey, currentkey, cat, dt):
-        ''' Reorganize marginal and transitional probability matrix when a new chunk is created by concatinating prev and current '''
+        def findancestors(c,L):
+            if c.acl == []:
+                return
+            else:
+                L = L + c.acl
+                for i in c.acl:
+                    findancestors(i, L)
+
         prev = self.chunks[prevkey]
         current = self.chunks[currentkey]
-        """Model hasn't seen this chunk before:"""
         chunk = self.checkcontentoverlap(cat.key)
-        if chunk is None:
-            # add concatinated chunk to the network
+        if chunk is None: # add concatinated chunk to the network
             # TODO： add chunk to vertex
             self.add_chunk(cat, leftkey=prevkey, rightkey=currentkey)
             # iterate through all chunk transitions that could lead to the same concatination chunk
@@ -408,12 +407,10 @@ class CG1:
             prev.adjacency[current][dt] = 0
 
             cat.adjacency = copy.deepcopy(current.adjacency)
-            # check if there are other pathways that arrive at the same chunk
-            ck = cat
-            while len(ck.acl) > 0:
-                ck = np.random.choice(ck.acl.keys())
-
-            while len(ck.cl) > 0:
+            # check other pathways that arrive at the same chunk based on cat's ancestor
+            candidate_cls = []
+            findancestors(cat, candidate_cls) # look for all ancestoral graph path that arrive at cat
+            for ck in candidate_cls:
                 for _cr in ck.adjacency:
                     for _dt in ck[_cr]:
                         if _cr != currentkey and ck.key != prevkey and _dt != dt:
@@ -421,13 +418,18 @@ class CG1:
                             if _cat!=None:
                                 if _cat==cat:
                                     # TODO: may need to merge nested dictionary
-                                    _cat_count =  self.chunks[ck].adjacency[_cr][_dt]
+                                    _cat_count = self.chunks[ck].adjacency[_cr][_dt]
                                     cat.count = cat.count + _cat_count
                                     ck.count = ck.count - _cat_count
                                     _cr.count = _cr.count - _cat_count
                                     ck.adjacency[_cr][_dt] = 0
 
-                ck = ck.cl
+                                    leftparent = self.chunks[ck.key]
+                                    rightparent = self.chunks[_cr]
+                                    leftparent.cl = self.check_and_add_to_dict(leftparent.cl, cat)
+                                    rightparent.cr = self.check_and_add_to_dict(rightparent.cr, cat)
+                                    cat.acl = self.check_and_add_to_dict(cat.acl, leftparent)
+                                    cat.acr = self.check_and_add_to_dict(cat.acl, rightparent)
         else:
             chunk.count = chunk.count + prev.adjacency[dt][currentkey]  # need to add estimates of how frequent the joint frequency occurred
             prev.count = prev.count - cat.count# reduce one sample observation from the previous chunk

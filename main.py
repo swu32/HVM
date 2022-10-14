@@ -1,15 +1,9 @@
-# TODO: learning to classes and learning algorithm
-# TODO: KL divergence plotting
-# TODO: hierarhical graph structure plotting
-# TODO: Test and reorganize the
 from Hand_made_generative import *
 from Generative_Model import *
 from Learning import *
 from wikitext2 import *
 from plotting import *
 from train import *
-from model import *
-from dataset import *
 from CG1 import *
 from chunks import *
 import numpy as np
@@ -17,9 +11,6 @@ import PIL as PIL
 from PIL import Image
 import os
 from time import time
-
-
-from avaprocess import *
 from chunks import *
 
 
@@ -52,217 +43,15 @@ def measure_KL():
                 imagined_seq = cg.imagination(n, sequential=True, spatial=False, spatial_temporal=False)
                 kl = evaluate_KL_compared_to_ground_truth(imagined_seq, cg_gt.M, Chunking_Graph(DT=0, theta=1))
 
-                imagined_seq = NN_testing(seq)
-                imagined_seq = np.array(imagined_seq).reshape([len(imagined_seq), 1, 1])
-                klnn = evaluate_KL_compared_to_ground_truth(imagined_seq, cg_gt.M, Chunking_Graph(DT=0, theta=1))
-
                 # take in data:
                 df['N'].append(n)
                 df['d'].append(depth)
                 df['kl'].append(kl)
                 df['type'].append('ck')
 
-                df['N'].append(n)
-                df['d'].append(depth)
-                df['kl'].append(klnn)
-                df['type'].append('nn')
-
     df = pd.DataFrame.from_dict(df)
     df.to_pickle('KL_rational_learning_N')  # where to save it, usually as a .pkl
     return df
-
-
-def transfer_pre_training(cg_train, n_train=3000):
-    """cg_train: chunking graph define to generate transfer sequences
-        n_train: use a sequence of length 3000 to train a model"""
-    training_seq = generate_hierarchical_sequence(cg_train.M, s_length=n_train)
-    cg = Chunking_Graph(DT=0.1, theta=0.96)  # naive model with no knowledge about the sequence
-    cg = learn_stc_classes(training_seq, cg)
-    return cg
-
-def transferinterferenceexperiment():
-
-    def training_session(graph_pipeline):
-        # TODO: please make sure that the graph tuple is indeed updated with the trained graph
-        for g in range(0, len(graph_pipeline['transfer'])):
-            graphtuple = graph_pipeline['transfer'][g]
-            _, cg_train = graphtuple
-            cg_trained = transfer_pre_training(cg_train)
-            graph_pipeline['transfer'][g] = graphtuple + (cg_trained,)
-
-        for g in range(0, len(graph_pipeline['nonoverlap'])):
-            graphtuple = graph_pipeline['nonoverlap'][g]
-            _, cg_train = graphtuple
-            cg_trained = transfer_pre_training(cg_train)
-            graph_pipeline['nonoverlap'][g] = graphtuple + (cg_trained,)
-
-        for g in range(0, len(graph_pipeline['semioverlapping'])):
-            graphtuple = graph_pipeline['semioverlapping'][g]
-            _, _, cg_train = graphtuple
-            cg_trained = transfer_pre_training(cg_train)
-            graph_pipeline['semioverlapping'][g] = graphtuple + (cg_trained,)
-
-        return graph_pipeline
-
-    def transfer_train_measure_KL(cg_trained,cg_test,training_sequence):
-        cg_trained = learn_stc_classes(training_sequence, cg_trained)
-        imagined_seq_trained = cg_trained.imagination(1000, sequential=True, spatial=False, spatial_temporal=False)
-        kl = evaluate_KL_compared_to_ground_truth(imagined_seq_trained, cg_test.M, Chunking_Graph(DT=0, theta=1))
-        return kl
-
-    def test_and_KL_measurement(graph_pipeline,training_sequence,df,N, cg_test):
-        naive_learner = Chunking_Graph(DT=0.1, theta=0.96)
-        kl = transfer_train_measure_KL(naive_learner, cg_test, training_sequence)
-        df['type'].append('naive')
-        df['N'].append(N)
-        df['kl'].append(kl)
-        df['delete'].append(0)
-        df['inferfere'].append(0)
-        df['n_s'].append(0)
-        df['n_d'].append(0)
-
-        for graphtuple in graph_pipeline['transfer']:
-            d, _, cg_trained = graphtuple
-            kl = transfer_train_measure_KL(cg_trained,cg_test,training_sequence)
-            df['type'].append('transfer')
-            df['N'].append(N)
-            df['kl'].append(kl)
-            df['delete'].append(d)
-            df['inferfere'].append(0)
-            df['n_s'].append(0)
-            df['n_d'].append(0)
-
-        for graphtuple in graph_pipeline['nonoverlap']:
-            d, _, cg_trained = graphtuple
-            cg_trained = learn_stc_classes(training_sequence, cg_trained)
-            kl = transfer_train_measure_KL(cg_trained,cg_test,training_sequence)
-            df['type'].append('nonoverlap')
-            df['N'].append(N)
-            df['kl'].append(kl)
-            df['delete'].append(0)
-            df['inferfere'].append(d)
-            df['n_s'].append(0)
-            df['n_d'].append(0)
-
-        for graphtuple in graph_pipeline['semioverlapping']:
-            n_s,n_d,_, cg_trained = graphtuple
-            kl = transfer_train_measure_KL(cg_trained,cg_test,training_sequence)
-            df['type'].append('semioverlapping')
-            df['N'].append(N)
-            df['kl'].append(kl)
-            df['delete'].append(0)
-            df['inferfere'].append(0)
-            df['n_s'].append(n_s)
-            df['n_d'].append(n_d)
-        return df
-
-
-    ################ Testing Transfer and Interference Effect #################
-    n_sample = 10
-    df = {}
-    df['type'] = []
-    df['N']=[]
-    df['kl']=[]
-    df['delete']=[]
-    df['inferfere']=[]
-    df['n_s']=[]
-    df['n_d']=[]
-    # in each sample, a different graph is generated, should we do that?
-    graph_pipeline = transfer_graphs_generator()
-    for k in range(0, n_sample):
-        trained_graph_pipeline = training_session(graph_pipeline)
-        # use test graph to generate test_seqeunce
-        cg_test = graph_pipeline['test']
-        N_test = 3000  # time step 3000 to test the transfer effect
-        test_sequence = generate_hierarchical_sequence(cg_test.M, s_length=N_test)
-
-        N_interval = 500
-        N = 0
-        for i in range(0, 6):
-            N = N + N_interval
-            test_sequence_segment = test_sequence[i*N_interval:(i+1)*N_interval,:,:]
-            df = test_and_KL_measurement(trained_graph_pipeline, test_sequence_segment, df, N, cg_test)
-        # measure KL divergence after training
-        # after training, test performance between the trained model and naive model on producing the geneative-like
-        # structure on the * transfer complex structure *
-        # track learning progress as the model parses through the sequence
-    df = pd.DataFrame.from_dict(df)
-    df.to_csv('TransferExperiment')
-    return df
-
-
-def NN_testing(sequence):
-    '''Input: sequence of a certain size that the NN is used then to train'''
-    ################ doing neural network testing here #############
-    # convert the sequence into lists
-
-    # Ns = np.arange(50, 3000, 50)# the length of sequence decided to show neural networks
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--max-epochs', type=int, default=1)
-    parser.add_argument('--batch-size', type=int, default=5)
-    parser.add_argument('--sequence-length', type=int, default=3)
-    args = parser.parse_args()
-
-    dataset = Dataset(sequence, args)
-    model = Model(dataset)
-
-    train(dataset, model, args)
-    imaginary_sequence = predict(dataset, model)
-    return imaginary_sequence
-
-def c3_RNN():
-
-    import pickle
-    with open('c3_RNN.pkl', 'wb') as f:
-        pickle.dump(df, f)
-    # need a list of prediction and output probability.
-    # train until the next mistake.
-    '''Compare neural network behavior with human on chunk prediction'''
-    sequence = np.array(generateseq('c3', seql=800)).reshape((800,1,1))
-    sequence[0,:,:] = 0
-    #sequence = np.array(generateseq('c3', seql=600)).reshape((600, 1, 1))
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--max-epochs', type=int, default=1)
-    parser.add_argument('--batch-size', type=int, default=5)
-    parser.add_argument('--sequence-length', type=int, default=5)
-    parser.add_argument('--learning-rate', type=float, default=0.1)
-    args = parser.parse_args()
-    predicted_seq = []#list(sequence[0:start].flatten())
-    prob = []#[0.25]*start
-    ID = []
-    learning_rate = []
-    n_sample = 50
-    for lr in [0.1,0.01,0.001]:
-        args.learning_rate = lr
-
-        for s in range(0, n_sample): # across 30 runs
-            for idx in range(200, 800):
-                dataset = Dataset(sequence[0:idx-1], args) # use all of the past dataset to train
-                model = Model(dataset)
-                train(dataset, model, args) # train another model from scratch.
-                pre_l = 20
-                p_next = evaluate_next_word_probability(model, sequence[idx], words=list(sequence[max(idx-pre_l,0):idx,:,:].flatten()))
-                predicted_seq.append(sequence[idx])
-                prob.append(p_next)
-                ID.append(s)
-                learning_rate.append(lr)
-
-    df = {}
-    df['seq'] = predicted_seq
-    df['prob'] = prob
-    df['id'] = ID
-    df['learning_rate'] = learning_rate
-    #
-    # with open('c3_RNN.npy', 'wb') as f:
-    #     np.save(f, [predicted_seq, prob])
-
-    # df = pd.DataFrame.from_dict(df)
-
-    import pickle
-    with open('c3_RNN.pkl', 'wb') as f:
-        pickle.dump(df, f)
-    return
-
 
 
 def p_RNN(trainingseq,testingseq):
@@ -617,83 +406,6 @@ def c3_chunk_learning():
 
     return
 
-
-def prob_hcm_rnn():
-    import pickle
-    # with open('hcm_rnn_rt_p.pkl', 'rb') as f:
-    #     data = pickle.load(f)
-    data = {}
-    data['id'] = []
-    data['p_rnn'] = []
-    data['p_hcm'] = []
-    data['seq'] = []
-    data['rt'] = []
-    # can also load from subject 59
-    dfsubject = pd.read_csv('/Users/swu/Desktop/research/chunking/data/data_plos_exp12/filtered_exp1.csv')
-    print(np.unique(dfsubject[dfsubject['condition'] == 2]['id']))# dfsubject[dfsubject['condition'] == 2]
-    for subj in np.unique(dfsubject[dfsubject['condition'] == 2]['id']):# iterate over all subjects in c3 chunk condition
-        print('subj ', subj)
-        subseq = []
-        for press in list(dfsubject[dfsubject['id'] == subj]['userpress']):
-            if press == list(dfsubject[dfsubject['id'] == subj]['keyassignment'])[0][2]:
-                subseq.append(1)
-            if press == list(dfsubject[dfsubject['id'] == subj]['keyassignment'])[0][7]:
-                subseq.append(2)
-            if press == list(dfsubject[dfsubject['id'] == subj]['keyassignment'])[0][12]:
-                subseq.append(3)
-            if press == list(dfsubject[dfsubject['id'] == subj]['keyassignment'])[0][17]:
-                subseq.append(4)
-        trainingseq = subseq[0:800]
-        testingseq = subseq[800:]# compare with subjects' performance on the last two blocks
-        p_hcm = hcm_c3_probability(trainingseq, testingseq)
-        p_rnn = p_RNN(trainingseq, testingseq)
-
-        data['id'] += [subj]*len(p_hcm)
-        data['p_rnn'] += p_rnn
-        data['p_hcm'] += p_hcm
-        data['seq'] += testingseq
-        data['rt'] += list(dfsubject[dfsubject['id'] == subj]['timecollect'])[800:1000]
-
-        with open('hcm_rnn_rt_p_test.pkl', 'wb') as f:
-            pickle.dump(data, f)
-
-
-    return
-
-def hcm_c3_probability(training_seq,testing_seq):
-    ''' input: sequence that participants used to train
-        output: sequence of probability '''
-    'evaluate the probability of the next element'
-    # look into sequence history, and evaluate the probability of the next sequential unit
-    """input: seq in np array
-       output: prediction of the next several sequential items based on the previous observations,
-       and the confidence judged by the model"""
-    # TODO: load data on one participant
-    # train on the entire sequence, and then evaluate the
-    time_series = np.array(training_seq).reshape([-1,1,1])
-    seq = time_series.astype(int)
-    cg = CG1(DT=0.1, theta=0.96)  # initialize chunking part with specified parameters
-    cg, chunkrecord = hcm_learning(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
-
-    time_series = np.array(testing_seq).reshape([-1,1,1])
-    seq = time_series.astype(int)
-    #cg.reinitialize()
-    cg, chunkrecord = hcm_learning(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
-
-
-    #TODO: convert chunkrecord into sequence of probability
-    p = []
-    eps = 0.05
-    for t in range(0, len(seq)):
-        if t in list(chunkrecord.keys()):
-            freq = chunkrecord[t][0][1]
-            p.append(freq/t)
-        else:# a within-chunk element
-            p.append(1 - 4*eps)
-
-    return p
-
-
 def calcium_imaging():
 
     ################# Calcium Imagining Processing #################
@@ -792,16 +504,6 @@ def previous_experiments_in_main():
 
 
 
-def model_comparison_HCM_RNN():
-    '''Comparison across humans, RNN, and HCM, experiment on predictability horizon, and '''
-    # do RNN experiments
-    c3_RNN()
-
-    c3_chunk_learning()
-
-    return
-
-
 
 def evaluate_perplexity(data, chunkrecord):
     #TODO: convert chunkrecord into sequence of probability
@@ -848,7 +550,6 @@ def Wikitext2():
     # evaluate the sum of log probability across n observations
     # divide by N
     # remove the log by exponentiating
-
     return
 
 
@@ -866,6 +567,8 @@ def simonsaystransfer():
     # the distance is how much more difficult is it to learn m2 on top of m1, and vice versa
     # correlate this distance with drop in performance for each participant
     # see which distance is more similar to both groups
+    pass
+
     def evalhcmdifficulty():
         # train m1 until convergence, and see how many iteration is needed to arrive at m2.
         return dm1m2, dm2m1
@@ -873,7 +576,9 @@ def simonsaystransfer():
     def evaleditdistance():
         return E1, E2
 
+
 def m1_m2():
+    pass
 
     m1 = np.array([1,2,2,2, 2,2,1,1, 1,1,2,1]).reshape([-1, 1, 1])
     m2 = np.array([1,1,1,2, 2,1,1,2, 2,2,2,1]).reshape([-1, 1, 1])
