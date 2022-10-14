@@ -9,10 +9,12 @@ class Chunk:
         diffidult, ideally, each chunk should have its own unique name, (ideally related to how it looks like) """
 
     # A code name unique to each chunk
-    def __init__(self, chunkcontent, variable=[], count=1, H=None, W=None, pad=1, entailment=[]):
+    def __init__(self, chunkcontent, variable=False, count=1, H=None, W=None, pad=1, entailment={}):
         """chunkcontent: a list of tuples describing the location and the value of observation"""
         # TODO: make sure that there is no redundency variable
+        self.variable = variable
         self.content = set(chunkcontent)
+
         self.key = tuple(sorted(self.content))
         self.count = count  #
         self.T = int(max(np.array(chunkcontent)[:, 0]) + 1)  # those should be specified when joining a chunking graph
@@ -31,7 +33,7 @@ class Chunk:
         self.D = 10
         self.matching_threshold = 0.8
         self.matching_seq = {}
-        self.abstraction = []  # what are the variables summarizing this chunk
+        self.abstraction = {}  # what are the variables summarizing this chunk
         self.entailment = entailment  # concrete chunks that the variable is pointing to
         self.cl = {}  # left decendent
         self.cr = {}  # right decendent

@@ -85,8 +85,8 @@ def hcm_rational(arayseq, cg, maxIter=20):
         print("============ empty out sequence ========== ")
         cg = parse_sequence(cg, arayseq, seq, seql)
         independence = cg.independence_test()
-        cg = rational_learning(cg, n_update=10) # rationally learn until loss function do not converge
-        cg = parse_sequence(cg, arayseq, seq, seql)
+        cg = rational_learning(cg, n_update=10) # rationally learn until loss function converge
+        cg = parse_sequence(cg, arayseq, seq, seql) # parse the sequence again to update chunk and transitions
         cg = abstraction_learning(cg)
         print("Average Encoding Length is ER = ", cg.eval_avg_encoding_len())
         seq_over = False
@@ -139,10 +139,6 @@ def rational_learning(cg, n_update=10):
     return cg
 
 
-
-def abstraction_learning(cg):
-
-    return cg
 
 
 def learning_and_update(current_chunks, chunk_record, cg, t, threshold_chunk = True):

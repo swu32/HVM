@@ -78,6 +78,31 @@ class CG1:
             ck.empty_counts()
         return
 
+    def extrapolate_variable(self,chunk):
+        transition = chunk.adjacency
+        count = 0
+        entailment = {}
+        for otherchunk in transition:
+            for dt in transition[otherchunk]:
+                count = count + 1
+            entailment[otherchunk] = sum(transition[otherchunk].item())
+
+        Var = Chunk([], variable=True, count=count, H=None, W=None, pad=1, entailment = entailment)
+        for ck in entailment:
+            ck.abstraction[Var] = sum(chunk.adjacency[ck].item())
+        return
+
+    def abstraction_learning(self, ancestors):
+        # find all chunks with a common cause or a common effect, extrapolating them into a variable
+        if ancestors.cl == [] and ancestors.cr == []:
+            return
+        elif ancestors.cl !=[] and ancestors.cr == []:
+            abstraction_learning(ancestors.cr)
+        elif ancestors.cl ==[] and ancestors.cr !=[]:
+            abstraction_learning(ancestors.cl)
+        else:
+            abstraction_learning(ancestors.cl)
+            abstraction_learning(ancestors.cr)
 
     def hypothesis_test(self,clidx,cridx,dt):
         cl = self.chunks[clidx]
@@ -280,39 +305,6 @@ class CG1:
                     max_intersect_chunk.children.append(newc)
                     max_intersect_chunk.children.append(chunk)
         return
-    #
-    #
-    # def relational_graph_refactorization(self, newc):
-    #     # find biggest smaller intersections
-    #     # smallest bigger intersections
-    #     biggest_smaller_intersections = set()
-    #     smallest_bigger_intersections = set()
-    #
-    #     smaller_intersections = {}
-    #     bigger_intersections = {}
-    #
-    #     bsi = 0
-    #     sbi = 1000
-    #     for chunk in self.vertex_list:
-    #         max_intersect = newc.content.intersection(chunk.content)
-    #         if len(max_intersect) == len(newc.content): # newc is an intersection
-    #             ? Is chunk the smallest bigger intersection?
-    #             E(newc, chunk)
-    #         elif len(max_intersect) == len(chunk.content):  # chunk is an intersection
-    #             ? Is chunk the biggest smaller intersection?
-    #         else:
-    #
-    #
-    #
-    #         if len(max_intersect) in smaller_intersections:
-    #         if chunk.content in newc.content: # biggest smaller intersection
-    #         if newc.content in chunk.content:# smallest bigger intersection
-    #
-    #     return
-
-
-    # def variable_identification():
-    #     # identify tree branch structure and calculate the gain of merging
 
 
     def check_ancestry(self,chunk,content):
