@@ -56,7 +56,7 @@ def parse_sequence(cg, arayseq, seq, seql):
         )  # chunks
 
         cg = learning_and_update(
-            current_chunks, chunk_record, cg, Buffer.t)
+            current_chunks, chunk_record, cg, Buffer.t, threshold_chunk=False)
         maxchunksize = cg.getmaxchunksize()
         seq = Buffer.refactor(seq, dt)
         Buffer.reloadsize = maxchunksize + 1
@@ -87,7 +87,7 @@ def hcm_rational(arayseq, cg, maxIter=20):
         independence = cg.independence_test()
         cg = rational_learning(cg, n_update=10) # rationally learn until loss function do not converge
         cg = parse_sequence(cg, arayseq, seq, seql)
-        cg = abstraction_learning(cg)
+        cg.abstraction_learning()
         print("Average Encoding Length is ER = ", cg.eval_avg_encoding_len())
         seq_over = False
         Iter = Iter + 1
@@ -136,12 +136,6 @@ def rational_learning(cg, n_update=10):
 
         if i > len(candidancy_pairs):
             break
-    return cg
-
-
-
-def abstraction_learning(cg):
-
     return cg
 
 
@@ -374,9 +368,6 @@ def add_chunk_to_M(chunk, M):
         M[chunk] = 1
     return M
 
-
-
-
 def find_relevant_observations(seq, termination_time, t):
 
     H, W = seq.shape[1:]
@@ -552,11 +543,13 @@ def identify_singleton_chunk(cg, seqc):#_c_
 
 
 def updatechunk(chunk,explainchunk,chunk_record,cg, max_chunk_idx,t):
-    if chunk.abstraction==[]:
+    if chunk.variable==[]:
         explainchunk.append(chunk.key, chunk.T)
         cg.chunks[chunk.key].update()  # update chunk count among the currently identified chunks
         chunk_record = updatechunkrecord(chunk_record, chunk.key, int(cg.chunks[chunk.index].T) + t, cg)
         return explainchunk, cg, chunk_record
+    else:
+
     # chunk = cg.chunks[max_chunk_idx]
     # while chunk.abstraction!=[]:
     #     for ck in chunk.abstraction:

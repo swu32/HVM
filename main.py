@@ -440,68 +440,6 @@ def calcium_imaging():
     return
 
 
-def previous_experiments_in_main():
-
-    # cg_gt = generative_model_random_combination(D=5, n=5)
-    # cg_gt = to_chunking_graph(cg_gt)
-    # seq = generate_hierarchical_sequence(cg_gt.M, s_length=1000)
-    # imagined_seq = NN_testing(seq)
-    # fmri()
-
-    ################## Generative Model ################
-    cggt = generative_model_random_combination(D=4, n=4)
-    cggt = to_chunking_graph(cggt)
-    seq = generate_random_hierarchical_sequence(cggt.M, s_length=500)
-    cg = Chunking_Graph(DT=0.01, theta=1)  # initialize chunking part with specified parameters
-    cg = learn_stc_classes(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
-
-    # one dimensional rational chunking
-    learned_M, _, _, _ = partition_seq_hastily(seq, list(cggt.M.keys()))
-    print(learned_M)
-    # cg_gt = hierarchy1d()  # one dimensional chunks
-    cg = Chunking_Graph(DT=0, theta=1)  # initialize chunking part with specified parameters
-    cg = rational_chunking_all_info(seq, cg, maxit=3)
-
-    ################# Debug and Intuitivize Spatial Temporal Chunking ############
-    cg = Chunking_Graph(DT=0.01, theta=1)  # initialize chunking part with specified parameters
-    cg = learn_stc_classes(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
-
-    ################ Debug Squid moving Gif #########################
-    squidgifmoving()
-
-    ################ Testing Transfer   and Intereference Graph Generation Techniques.
-    df = transferinterferenceexperiment()
-    ################# Measure KL ##############
-    measure_KL()
-
-    ################# Transfer and Interference and their KL Divergence plots ##############
-
-    cg_trained = Chunking_Graph(DT=0.005, theta=0.996)
-
-    cg_original = transfer_original()
-
-    n_train = 3000
-
-    # train the model on the facilitating sequence:
-    training_seq = generate_hierarchical_sequence(cg_original.M, s_length=n_train)
-    cggt = generative_model_random_combination(D=4, n=4)
-    cggt = to_chunking_graph(cggt)
-    print(cggt.M)
-    seq = generate_random_hierarchical_sequence(cggt.M, s_length=5000)
-
-    cg_trained = learn_stc_classes(seq, cg_trained)
-
-    ################# experiment to measure KL divergence ###############
-    Ns = np.arange(100, 3000, 100)
-    measure_KL(Ns)
-    # TODO: plot temporal chunks and its components
-    cg_gt = hierarchy1d()
-    n = 2000
-    seq = generate_hierarchical_sequence(cg_gt.M, s_length=n)
-    cg = Chunking_Graph(DT=0, theta=1)  # initialize chunking part with specified parameters
-    cg = learn_stc_classes(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
-    return
-
 
 
 

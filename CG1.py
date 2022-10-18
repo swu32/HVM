@@ -5,9 +5,6 @@ import copy
 
 class CG1:
     """
-
-    ...
-
     Attributes
     ----------
     vertex_list : list
@@ -34,8 +31,10 @@ class CG1:
         self.y0 = y0 # the initial height of the graph, used for plotting
         self.x_max = x_max # initial x location of the graph
         self.chunks = {}# a dictonary with chunk keys and chunk tuples
+        self.variables = {} # variable with their variable object
         self.concrete_chunks = []# no entailment
         self.ancestors = []# list of chunks without parents
+        self.latest_descendents = []
         self.theta = theta# forgetting rate
         self.deletion_threshold = DT
         self.H = 1 # default
@@ -280,40 +279,6 @@ class CG1:
                     max_intersect_chunk.children.append(newc)
                     max_intersect_chunk.children.append(chunk)
         return
-    #
-    #
-    # def relational_graph_refactorization(self, newc):
-    #     # find biggest smaller intersections
-    #     # smallest bigger intersections
-    #     biggest_smaller_intersections = set()
-    #     smallest_bigger_intersections = set()
-    #
-    #     smaller_intersections = {}
-    #     bigger_intersections = {}
-    #
-    #     bsi = 0
-    #     sbi = 1000
-    #     for chunk in self.vertex_list:
-    #         max_intersect = newc.content.intersection(chunk.content)
-    #         if len(max_intersect) == len(newc.content): # newc is an intersection
-    #             ? Is chunk the smallest bigger intersection?
-    #             E(newc, chunk)
-    #         elif len(max_intersect) == len(chunk.content):  # chunk is an intersection
-    #             ? Is chunk the biggest smaller intersection?
-    #         else:
-    #
-    #
-    #
-    #         if len(max_intersect) in smaller_intersections:
-    #         if chunk.content in newc.content: # biggest smaller intersection
-    #         if newc.content in chunk.content:# smallest bigger intersection
-    #
-    #     return
-
-
-    # def variable_identification():
-    #     # identify tree branch structure and calculate the gain of merging
-
 
     def check_ancestry(self,chunk,content):
         # check if content belongs to ancestor
@@ -503,7 +468,6 @@ class CG1:
         # TODO: add new variable chunk here.
         chk_var = Chunk([chk, var])# an agglomeration of chunk with variable is created
 
-
         return
 
     def pop_transition_matrix(self, element):
@@ -564,59 +528,15 @@ class CG1:
         return img[1:seql, :, :]
 
 
-    def imagination(self, n, sequential=False, spatial=False, spatial_temporal = False):
-        ''' Independently sample from a set of chunks, and put them in the generative sequence
-            Obly support transitional probability at the moment
-            n+ temporal length of the imagiantion'''
-
-        marginals = self.M
-        s_last_index = np.random.choice(np.arange(0,len(list(self.M.keys())),1))
-        s_last = list(self.M.keys())[s_last_index]
-        # s_last = np.random.choice(list(self.M.keys()))
-        s_last = tuple_to_arr(s_last)
-        H, W = s_last.shape[1:]
-        if sequential:
-            L = 20
-            produced_sequence = np.zeros([n + L, H, W])
-            produced_sequence[0:s_last.shape[0], :, :] = s_last
-            t = s_last.shape[0]
-            while t <= n:
-                #item, p = sample(transition_matrix, marginals, arr_to_tuple(s_last))
-                item, p = sample_marginal(marginals)
-                s_last = tuple_to_arr(item)
-                produced_sequence[t:t + s_last.shape[0], :, :] = s_last
-                t = t + s_last.shape[0]
-            produced_sequence = produced_sequence[0:n,:,:]
-            return produced_sequence
-
-        if spatial:
-            produced_sequence = np.zeros([n, H, W])
-            produced_sequence[0, :, :] = s_last
-            t = 1
-            while t <= n:
-                # this part is not as simple, because transition matrix is spatial.
-                item, p = sample_spatial(marginals)
-                s_last = item
-                produced_sequence[t:t+1, :, :] = s_last
-                t = t + 1
-            return produced_sequence
-
-        if spatial_temporal:
-            L = 20
-            produced_sequence = np.zeros([n+L, H, W])
-            produced_sequence[0:s_last.shape[0], :, :] = s_last
-            t = 1
-            while t <= n:
-                # this part is not as simple, because transition matrix is spatial.
-                item, p = sample_spatial_temporal(marginals)
-                s_last = item
-                produced_sequence[t:t+s_last.shape[0], :, :] = s_last
-                t = t + s_last.shape[0]
-            return produced_sequence
-
-        else:
-            return None
-
+    def abstraction_learning(self):
+        # the order of abstraction level, from decendents until the earlier abstractions, is a matter of debate.
+        for chunk in self.latest_descendents:
+            dts = chunk.adjacency.keys()
+            for dt in dts:
+                entailing_chunks = chunk.adjacency[dt].keys()
+                v = Variable(entailingchunks=entailing_chunks)
+                self.variables[v.key] = v
+        return
 
 
 

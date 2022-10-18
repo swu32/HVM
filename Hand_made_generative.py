@@ -17,7 +17,6 @@ def simple_abstraction():
 
 
 def hierarchy1d():
-    cg = Chunking_Graph()
     #================== Initialization Process ==================
     # level I
     # A = np.zeros([3, 1, 1])
@@ -65,7 +64,6 @@ def compositional_imgs():
     # each chunk contains some probability of occurrance
     # at each time point, a chunk is sampled and displayed on one of the dimensions.
     # level I, primitives
-    cg = Chunking_Graph()
     # =========== Initialization Process ================
 
     zero = np.array([[[0, 0, 0, 0, 0],

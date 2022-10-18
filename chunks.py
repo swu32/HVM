@@ -32,6 +32,7 @@ class Chunk:
         self.matching_threshold = 0.8
         self.matching_seq = {}
         self.abstraction = []  # what are the variables summarizing this chunk
+        self.variable = [] # the variables that this chunk is included as an instance
         self.entailment = entailment  # concrete chunks that the variable is pointing to
         self.cl = {}  # left decendent
         self.cr = {}  # right decendent
@@ -301,6 +302,12 @@ class Chunk:
             self.adjacency[chunkkey] = {}
             if dt in self.adjacency[chunkkey].keys():
                 self.adjacency[chunkkey][dt] = 1
+
+        for v in self.variable:
+            if dt in v.adjacency[chunkkey].keys():
+                v.adjacency[chunkkey][dt] = v.adjacency[chunkkey][dt] + 1
+            else:
+                v.adjacency[chunkkey][dt] = 1
         return
 
     def contentagreement(self, content):
@@ -312,37 +319,29 @@ class Chunk:
 
 # TODO: upon parsing, isinstance(51,Chunk) can be used to check whether something is a chunk or a variable
 
+import random
+import string
+
+
 class Variable():
     '''TODO: upon initialization, need to inherent previous counts '''
     """A variable can take on several contents"""
 
     # A code name unique to each chunk
-    def __init__(self, entailingchunks, totalcount=1, H=None, W=None,
-                 pad=1):  # how to define a variable?? a list of alternative
+    def __init__(self, entailingchunks, totalcount=1):  # how to define a variable?? a list of alternative
         '''variablecontent: a list of possible content that a variable can take, it can be a list of sets, variables, and chunks '''
         self.content = entailingchunks  # a variable is a pointer to several enlisted chunks
+        for chunk in entailingchunks:
+            chunk.variable.add(self)
         self.totalcount = totalcount
-        self.pad = pad  # boundary size for nonadjacency detection, set the pad to not 1 to enable this feature.
-        self.adjacency = self.get_adjacency(
-            entailingchunks)  # should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
+        self.key = self.get_variable_key()
+        self.adjacency = self.get_adjacency(entailingchunks)  # should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
         self.entailment = {}
-
-        # TODO: calculate average variable length
-        self.T = int(
-            max(np.array(chunkcontent)[:, 0]) + 1)  # the average temporal length of the chunks within variable content
-        self.H = H
-        self.W = W
         self.volume = len(self.content)  #
-
-        self.indexloc = None
-        self.get_index()
 
         self.arraycontent = None
         self.boundarycontent = set()
-        T, H, W, cRidx = self.get_index_padded()
         self.D = 1
-
-        # discount coefficient when computing similarity between two chunks, relative to the temporal discount being 1
         self.h = 1.
         self.w = 1.
         self.v = 1.
@@ -351,6 +350,16 @@ class Variable():
         if varinstance in self.content:
             self.count[varinstance] = self.count[varinstance] + 1
         self.totalcount += 1
+        return
+
+    def get_adjacency(self, entailingchunks):
+        # I think we might not need it
+        adjacency = {}
+        dts = set()
+        for chunk in entailingchunks:
+            for dt in chunk.adjacency:
+                for cr in chunk.adjacency[dt]:
+                    pass
         return
 
     def update_transition(self, chunkidx, dt):  # _c_
@@ -364,6 +373,7 @@ class Variable():
             self.adjacency[dt] = {}
             self.adjacency[dt][chunkidx] = 1
         return
+
 
     def get_N_transition(self, dt):
         assert dt in list(self.adjacency.keys())
@@ -394,3 +404,10 @@ class Variable():
             clcr = Chunk(list(clcrcontent), H=self.H, W=self.W)
 
         pass
+        return
+
+    def get_variable_key(self):
+        length = 4
+        letters = string.ascii_lowercase
+        result_str = ''.join(random.choice(letters) for i in range(length))
+        return result_str
