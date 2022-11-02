@@ -593,7 +593,7 @@ def simonsays():
     return
 
 def test_simple_abstraction():
-    seq = simple_abstraction()
+    seq = simple_abstraction_I()
     cg = CG1(DT=0.1, theta=0.996)
     cg, chunkrecord = hcm_rational(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
 

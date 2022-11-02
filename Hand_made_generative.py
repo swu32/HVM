@@ -1,18 +1,35 @@
 from Learning import *
 
+def simple_abstraction():
+    """An abstraction structure with a variable and two chunks that shares the same variable"""
+    seq = []
+    l = 20
+    c1 = [1,2,3]
+    c2 = [2,1,2]
+    c3 = [2, 1]
+    for i in range(0,l):
+        v1 = [c1, c2, c3][np.random.randint(0, 3)]
+        c4 = [3] + v1 + [4]
+        c5 = [1] + v1 + [2]
+        seq = ([c4, c5][np.random.randint(0, 2)])
+    return seq
+
+def simple_abstraction_I():
+    seql = 1000
+    seq = np.zeros(shape = (1000,1,1))
+    i = 0
+    while i+4 < seql:
+        seq[i,:,:] = 2
+        seq[i+1,:,:] = np.random.choice([3,4])
+        seq[i+2,:,:] = np.random.choice([1,5])
+        i = i + 4
+    return seq
+    
 def simple_seq():
     seq = np.array([[[0]], [[1]], [[2]], [[3]],[[4]],[[5]],[[6]],[[7]],[[8]],[[9]],[[10]],[[11]],[[12]]])
     return seq
 
-def simple_abstraction():
-    seql = 1000
-    seq = np.zeros(shape = (1000,1,1))
-    i = 0
-    while i+3 < seql:
-        seq[i,:,:] = 2
-        seq[i+1,:,:] = np.random.choice([3,4])
-        i = i + 3
-    return seq
+
 
 
 

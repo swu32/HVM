@@ -549,7 +549,7 @@ def updatechunk(chunk,explainchunk,chunk_record,cg, max_chunk_idx,t):
         chunk_record = updatechunkrecord(chunk_record, chunk.key, int(cg.chunks[chunk.index].T) + t, cg)
         return explainchunk, cg, chunk_record
     else:
-
+        pass
     # chunk = cg.chunks[max_chunk_idx]
     # while chunk.abstraction!=[]:
     #     for ck in chunk.abstraction:
@@ -847,7 +847,6 @@ def measure_average_EUEP(chunk_f):
     return avg_euep
 
 
-from Chunking_Graph import *
 from time import time
 
 

@@ -9,10 +9,12 @@ class Chunk:
         diffidult, ideally, each chunk should have its own unique name, (ideally related to how it looks like) """
 
     # A code name unique to each chunk
-    def __init__(self, chunkcontent, variable=[], count=1, H=None, W=None, pad=1, entailment=[]):
+    def __init__(self, chunkcontent, variable=False, count=1, H=None, W=None, pad=1, entailment={}):
         """chunkcontent: a list of tuples describing the location and the value of observation"""
         # TODO: make sure that there is no redundency variable
+        self.variable = variable
         self.content = set(chunkcontent)
+
         self.key = tuple(sorted(self.content))
         self.count = count  #
         self.T = int(max(np.array(chunkcontent)[:, 0]) + 1)  # those should be specified when joining a chunking graph
@@ -33,6 +35,7 @@ class Chunk:
         self.matching_seq = {}
         self.abstraction = []  # what are the variables summarizing this chunk
         self.variable = [] # the variables that this chunk is included as an instance
+
         self.entailment = entailment  # concrete chunks that the variable is pointing to
         self.cl = {}  # left decendent
         self.cr = {}  # right decendent
@@ -337,7 +340,7 @@ class Variable():
         self.key = self.get_variable_key()
         self.adjacency = self.get_adjacency(entailingchunks)  # should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
         self.entailment = {}
-        self.volume = len(self.content)  #
+        self.volume = self.get_volume()# for comparing explanability sizes
 
         self.arraycontent = None
         self.boundarycontent = set()
@@ -351,6 +354,12 @@ class Variable():
             self.count[varinstance] = self.count[varinstance] + 1
         self.totalcount += 1
         return
+
+    def get_volume(self):
+        v = 0
+        for item in self.content:
+            v = v + item.volume
+        return v/len(self.content)
 
     def get_adjacency(self, entailingchunks):
         # I think we might not need it

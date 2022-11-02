@@ -1,7 +1,6 @@
 import numpy as np
 import random
 from Learning import *
-from Chunking_Graph import *
 
 ''''Generates a hierarchical generative model with depth d'''
 class Generative_Model():
@@ -38,6 +37,9 @@ class Generative_Model():
                 if (k >= cdf[i - 1]):
                     if (k < cdf[i]):
                         return list(states[i - 1]), prob[i - 1]
+                    
+                    
+
 
 
 def partition_seq(this_sequence, bag_of_chunks):
@@ -212,36 +214,6 @@ def generate_random_hierarchical_sequence(marginals, s_length=10):
 
     # this generates a sequence, but there is no guarantee that the parse will be the same as intended.
     return sequence
-
-
-
-# def generate_random_hierarchical_sequence_v2(marginals, s_length=10):
-#     # first generate a brunch of sequences
-#     # then arrange them so they do not get confused.
-#
-#     chunk_seq = []
-#     for i in range(0, s_length):
-#         chunk_seq.append(np.random.choice(list(marginals.keys()), p = list(marginals.values())))
-#
-#     H, W = tuple_to_arr(list(marginals.keys())[0]).shape[1:]
-#     sequence = np.zeros([s_length, H, W])
-#
-#     # now put chunk seq into the sequence, without confusing them.
-#     not_over = True
-#     i = 0
-#     while i < s_length:
-#         # generate_new_sample(sequence_so_far, chunk_seq)
-#         valid=False
-#         while valid=False:
-#             newchunk = np.random.choice(chunk_seq)
-#             # valid = check newchunk validity
-#         sequence[i:min(s_length, i + t_len), :, :] = tuple_to_arr(new_sample)[0:sample_duration, :, :]
-#         i = i + t_len
-#
-#         new_sample, _ = np.random.choice(list(marginals.keys()), list(marginals.values()))
-#         t_len = tuple_to_arr(new_sample).shape[0]
-#         sample_duration = min(s_length, i + t_len) - i
-#     return sequence
 
 def dirichlet_flat(N, sort = True):
     alpha = tuple([1 for i in range(0, N)])  # coefficient for the flat dirichlet distribution
