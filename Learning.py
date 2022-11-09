@@ -62,7 +62,7 @@ def parse_sequence(cg, arayseq, seq, seql):
         Buffer.reloadsize = maxchunksize + 1
         Buffer.checkreload(arayseq)
         seq_over = Buffer.checkseqover()
-    return cg
+    return cg,chunk_record
 
 
 def hcm_rational(arayseq, cg, maxIter=20):
@@ -81,18 +81,39 @@ def hcm_rational(arayseq, cg, maxIter=20):
     seq, seql = convert_sequence(arayseq[0:1, :, :])  # loaded with the 0th observation
     Iter = 0
     independence = False
-    while independence == False and Iter <= maxIter:
+    while cg.independence_test() == False and Iter <= maxIter:
         print("============ empty out sequence ========== ")
-        cg = parse_sequence(cg, arayseq, seq, seql)
-        independence = cg.independence_test()
+        cg, _ = parse_sequence(cg, arayseq, seq, seql)
         cg = rational_learning(cg, n_update=10) # rationally learn until loss function do not converge
-        cg = parse_sequence(cg, arayseq, seq, seql)
-        cg.abstraction_learning()
-        print("Average Encoding Length is ER = ", cg.eval_avg_encoding_len())
+        cg, chunkrecord = parse_sequence(cg, arayseq, seq, seql)
+        # print("Average Encoding Length is ER = ", cg.eval_avg_encoding_len())
         seq_over = False
         Iter = Iter + 1
 
+    cg.abstraction_learning()
+    cg = rational_learning() # learn chunks with variables
+    cg, chunkrecord = convert_sequence(chunk_record)
+
+    cg.abstraction_learning()
+    cg = rational_learning() # learn chunks with variables
+    cg, chunkrecord = convert_sequence(chunk_record)
+
+
+
     return cg
+
+
+def convert_sequence(chunk_record):
+    # find the next level of chunks with variables to describe the sequence, based on the level of abstraction in the abstract graph
+    parsed_chunk_record = {}
+    for t, chunk in chunk_record.item():
+        # if chunk.variable is not empty
+        # find the biggest chunk with variable that explains the sequence
+        # update parsed_chunk_record
+        # update transition probabilities
+        pass
+
+    return parsed_chunk_record
 
 
 
@@ -109,10 +130,9 @@ def rational_learning(cg, n_update=10):
     )  # iterate through all chunk pairs and find the chunks with the biggest candidancy
 
 
-    for _prevck in cg.chunks: # this iteration will be horribly slow.
-        _previdx = _prevck.index
+    for _previdx,_prevck in cg.chunks.items(): # this iteration will be horribly slow.
         for _postidx in _prevck.adjacency:
-            for _dt in _prevck.adjacency.keys():
+            for _dt in _prevck.adjacency[_postidx].keys():
                 _postck = cg.chunks[_postidx]
                 _cat = combinechunks(_previdx, _postidx, _dt, cg)
                 # hypothesis test
@@ -122,7 +142,7 @@ def rational_learning(cg, n_update=10):
                     candidancy_pairs.append(
                         [
                             (_previdx, _postidx, _cat, _dt),
-                            _prevck.adjacency[_dt][_postidx],
+                            _prevck.adjacency[_postidx][_dt],
                         ]
                     )
 
@@ -130,7 +150,7 @@ def rational_learning(cg, n_update=10):
     print(candidancy_pairs)
 
     # number of chunk combinations allowed.
-    for i in range(0, n_update):
+    for i in range(0, min(n_update,len(candidancy_pairs))):
         prev_idx, current_idx, cat, dt = candidancy_pairs[i][0]
         cg.chunking_reorganization(prev_idx, current_idx, cat, dt)
 
@@ -145,6 +165,7 @@ def learning_and_update(current_chunks, chunk_record, cg, t, threshold_chunk = T
     t: finishing parsing at time t
     current_chunks_idx: the chunks ending at the current time point
     chunk_record: boundary record of when the previous chunks have ended.
+    threshold_chunk: False when the function is used only for parsing and updating transition probabilities.
     TODO: Look backward and around to update transition according to chunk relations. '''
     n_t = 1# 2
     if len(chunk_record)>1:
@@ -157,15 +178,16 @@ def learning_and_update(current_chunks, chunk_record, cg, t, threshold_chunk = T
                 if chunkendtime in list(chunk_record.keys()):
                     previous_chunks = chunk_record[chunkendtime]
                     # current_chunk_starting_time = t - temporal_length_of_current_chunk + 1  # the "current chunk" starts at:
-                    for prev in previous_chunks:
-                        samechunk = prev == chunk and delta_t == 0
-                        if not samechunk and cg.chunks[prev].entailment == []:# do not check variable chunks
-                            combined_chunk, dt = adjacency(prev, chunk, delta_t, t, cg)
-                            if combined_chunk is not None:
-                                # TODO: update variables associated with specific chunks as well
-                                # if the two chunks are adjacent to each other
-                                cg.chunks[prev].update_transition(chunk, dt)
-                                if threshold_chunk: cg, chunked = threshold_chunking(prev, chunk, combined_chunk, dt, cg)
+                    for prev,_ in previous_chunks:
+                        samechunk = prev == chunk
+                        if not (samechunk and delta_t==0):
+                            if len(cg.chunks[prev].entailment) == 0:# do not check variable chunks
+                                combined_chunk, dt = adjacency(prev, chunk, delta_t, t, cg)
+                                if combined_chunk is not None:
+                                    # TODO: update variables associated with specific chunks as well
+                                    # if the two chunks are adjacent to each other
+                                    cg.chunks[prev].update_transition(cg.chunks[chunk], dt)
+                                    if threshold_chunk: cg, chunked = threshold_chunking(prev, chunk, combined_chunk, dt, cg)
                 delta_t = delta_t + 1
     return cg
 
@@ -435,8 +457,8 @@ def identify_chunks(cg, seq, termination_time, t, previous_chunk_boundary_record
         return {}, cg, termination_time, previous_chunk_boundary_record
 
 
-def pop_chunk_in_seq_full(chunk_idx, seqc,cg):#_c_
-    chunk = cg.chunks[chunk_idx]
+def pop_chunk_in_seq_full(chunk, seqc,cg):#_c_
+    chunk = cg.chunks[chunk.key]
     content = chunk.content
     for tup in content:# remove chunk content one by one from the sequence
         seqc.remove(tup) # O(1)
@@ -497,7 +519,7 @@ def identify_biggest_chunk(cg, seqc, checktype = 'full'):#_c_full
     # there are empty observations in certain time slices.
     def findmatch(current, seqc):
         for chunk in current:  # what if there are multiple chunks that satisfies the relation?
-            if chunk.content.isin(seqc):
+            if chunk.content.issubset(seqc):
                 return chunk
         return None
 
@@ -516,7 +538,7 @@ def identify_biggest_chunk(cg, seqc, checktype = 'full'):#_c_full
 
     current = cg.ancestors
     while len(current) > 0:
-        c_star = findmatch(current)
+        c_star = findmatch(current,seqc)
         if c_star is not None:
             c_star.parse = c_star.parse + 1
             current = c_star.cl
@@ -538,15 +560,15 @@ def identify_singleton_chunk(cg, seqc):#_c_
     chunkcontent = [seqc[0]]
     chunk = Chunk(chunkcontent, H=cg.H, W=cg.W)
     cg.add_chunk(chunk)
-    cg.ancestors= [chunk] # point from content to chunk
-    return chunk.index, cg
+    cg.ancestors.append(chunk)# point from content to chunk
+    return chunk, cg
 
 
-def updatechunk(chunk,explainchunk,chunk_record,cg, max_chunk_idx,t):
+def updatechunk(chunk, explainchunk, chunk_record, cg, t):
     if chunk.variable==[]:
-        explainchunk.append(chunk.key, chunk.T)
+        explainchunk.append((chunk.key, chunk.T))
         cg.chunks[chunk.key].update()  # update chunk count among the currently identified chunks
-        chunk_record = updatechunkrecord(chunk_record, chunk.key, int(cg.chunks[chunk.index].T) + t, cg)
+        chunk_record = updatechunkrecord(chunk_record, chunk.key, int(chunk.T) + t, cg)
         return explainchunk, cg, chunk_record
     else:
         pass
@@ -560,8 +582,8 @@ def updatechunk(chunk,explainchunk,chunk_record,cg, max_chunk_idx,t):
     return
 
 def identify_one_chunk(cg, seqc, explainchunk, chunk_record, t): #_c_
-    max_chunk_idx, seqc = identify_biggest_chunk(cg, seqc) # identify and pop chunks in sequence
-    explainchunk, cg, chunk_record = updatechunk(cg.chunks[max_chunk_idx], explainchunk, chunk_record, cg, max_chunk_idx,t)
+    max_chunk, seqc = identify_biggest_chunk(cg, seqc) # identify and pop chunks in sequence
+    explainchunk, cg, chunk_record = updatechunk(max_chunk, explainchunk, chunk_record, cg,t)
     # explainchunk.append((max_chunk_idx, int(cg.chunks[max_chunk_idx].T), list(cg.visible_chunk_list[max_chunk_idx])))
     # chunk_record = updatechunkrecord(chunk_record, max_chunk_idx, int(cg.chunks[max_chunk_idx].T) + t, cg)
     # cg.chunks[max_chunk_idx].update()  # update chunk count among the currently identified chunks

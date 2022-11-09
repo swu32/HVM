@@ -14,7 +14,6 @@ class Chunk:
         # TODO: make sure that there is no redundency variable
         self.variable = variable
         self.content = set(chunkcontent)
-
         self.key = tuple(sorted(self.content))
         self.count = count  #
         self.T = int(max(np.array(chunkcontent)[:, 0]) + 1)  # those should be specified when joining a chunking graph
@@ -23,7 +22,8 @@ class Chunk:
         self.index = None
         self.vertex_location = None
         self.pad = pad  # boundary size for nonadjacency detection, set the pad to not 1 to enable this feature.
-        self.adjacency = {}
+        self.adjacency = {} # chunk --> something
+        self.preadjacency = {} # something --> chunk
         self.birth = None  # chunk creation time
         self.volume = len(self.content)  #
         self.indexloc = self.get_index()
@@ -46,6 +46,7 @@ class Chunk:
         self.h = 1.
         self.w = 1.
         self.v = 1.
+        self.parse = 0
 
     def __hash__(self):
         return hash(self.key)
@@ -93,10 +94,10 @@ class Chunk:
         return
 
     def get_N_transition(self, dt):
-        assert dt in list(self.adjacency.keys())
         N = 0
-        for item in self.adjacency[dt]:
-            N = N + self.adjacency[dt][item]
+        for chunk in self.adjacency:
+            if dt in list(self.adjacency[chunk].keys()):
+                N = N + self.adjacency[chunk][dt]
         return N
 
     def get_index(self):
@@ -260,7 +261,7 @@ class Chunk:
         lap_x = overlaps((xl1 - self.pad, xl2 + self.pad), (xr1 - self.pad, xr2 + self.pad))
         lap_y = overlaps((yl1 - self.pad, yl2 + self.pad), (yr1 - self.pad, yr2 + self.pad))
 
-        if (lap_t > 0 & lap_x > 0 & lap_y > 0):
+        if (lap_t > 0 and lap_x > 0 and lap_y > 0):
             return True
         else:
             return False
@@ -295,16 +296,30 @@ class Chunk:
                     x1[2] - x2[2]) * (x1[2] - x2[2]) + self.v * (x1[0] - x2[0]) * (x1[0] - x2[0])
         return D
 
-    def update_transition(self, chunkkey, dt):
-        if chunkkey in self.adjacency.keys():
-            if dt in self.adjacency[chunkkey].keys():
-                self.adjacency[chunkkey][dt] = self.adjacency[chunkkey][dt] + 1
+    def update_transition(self, chunk, dt):
+        if chunk.key in self.adjacency.keys():
+            if dt in self.adjacency[chunk.key].keys():
+                self.adjacency[chunk.key][dt] = self.adjacency[chunk.key][dt] + 1
             else:
-                self.adjacency[chunkkey][dt] = 1
+                self.adjacency[chunk.key][dt] = 1
         else:
-            self.adjacency[chunkkey] = {}
-            if dt in self.adjacency[chunkkey].keys():
-                self.adjacency[chunkkey][dt] = 1
+            self.adjacency[chunk.key] = {}
+            self.adjacency[chunk.key][dt] = 1
+
+        print(self.key, self.adjacency)
+
+        if self.key in list(chunk.preadjacency.keys()): # preadjacency: something --> chunkidx
+            if dt in list(chunk.preadjacency[self.key].keys()):
+                chunk.preadjacency[self.key][dt] = chunk.preadjacency[self.key][dt] + 1
+            else:
+                chunk.preadjacency[self.key][dt] = 1
+        else:
+            chunk.preadjacency[self.key] = {}
+            if dt in chunk.preadjacency[self.key].keys():
+                chunk.preadjacency[self.key][dt] = chunk.adjacency[self.key][dt] + 1
+            else:
+                chunk.preadjacency[self.key][dt] = 1
+
 
         for v in self.variable:
             if dt in v.adjacency[chunkkey].keys():
@@ -365,23 +380,33 @@ class Variable():
         # I think we might not need it
         adjacency = {}
         dts = set()
+
         for chunk in entailingchunks:
-            for dt in chunk.adjacency:
-                for cr in chunk.adjacency[dt]:
-                    pass
+            for cr in chunk.adjacency:
+                if cr in adjacency.keys():
+                    for dt in chunk.adjacency[cr]:
+                        if dt in adjacency[cr].keys:
+                            adjacency[cr][dt] = adjacency[cr][dt] + chunk.adjacency[cr][dt]
+                        else:
+                            adjacency[cr][dt] = chunk.adjacency[cr][dt]
+                else:
+                    adjacency[cr] = {}
+                    for dt in chunk.adjacency[cr]:
+                        adjacency[cr][dt] = chunk.adjacency[cr][dt]
         return
 
     def update_transition(self, chunkidx, dt):  # _c_
         # transition can be chunk or variable
-        if dt in list(self.adjacency.keys()):
-            if chunkidx in list(self.adjacency[dt].keys()):
-                self.adjacency[dt][chunkidx] = self.adjacency[dt][chunkidx] + 1
+        if chunkidx in list(self.adjacency.keys()):
+            if dt in list(self.adjacency[chunkidx].keys()):
+                self.adjacency[chunkidx][dt] = self.adjacency[chunkidx][dt] + 1
             else:
-                self.adjacency[dt][chunkidx] = 1
+                self.adjacency[chunkidx][dt] = {}
+                self.adjacency[chunkidx][dt] = 1
         else:
-            self.adjacency[dt] = {}
-            self.adjacency[dt][chunkidx] = 1
-        return
+            self.adjacency[chunkidx] = {}
+            self.adjacency[chunkidx][dt] = 1
+
 
 
     def get_N_transition(self, dt):

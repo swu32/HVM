@@ -3,6 +3,7 @@ from chunks import *
 import numpy as np
 import copy
 
+
 class CG1:
     """
     Attributes
@@ -18,42 +19,42 @@ class CG1:
     -------
 
     """
+
     # TODO: record which chunk created when
     # TODO: record on the dependencies between the chunks
 
-    def __init__(self, y0=0, x_max=0, DT = 0.01, theta=0.75):
+    def __init__(self, y0=0, x_max=0, DT=0.01, theta=0.75):
         """DT: deletion threshold"""
         # vertex_list: list of vertex with the order of addition
         # each item in vertex list has a corresponding vertex location.
         # edge list: list of vertex tuples
-        self.vertex_list = [] # list of the chunks
+        self.vertex_list = []  # list of the chunks
         # the concrete and abstract chunk list together i
-        self.y0 = y0 # the initial height of the graph, used for plotting
-        self.x_max = x_max # initial x location of the graph
-        self.chunks = {}# a dictonary with chunk keys and chunk tuples
-        self.variables = {} # variable with their variable object
-        self.concrete_chunks = []# no entailment
-        self.ancestors = []# list of chunks without parents
+        self.y0 = y0  # the initial height of the graph, used for plotting
+        self.x_max = x_max  # initial x location of the graph
+        self.chunks = {}  # a dictonary with chunk keys and chunk tuples
+        self.variables = {}  # variable with their variable object
+        self.concrete_chunks = []  # no entailment
+        self.ancestors = []  # list of chunks without parents
         self.latest_descendents = []
-        self.theta = theta# forgetting rate
+        self.theta = theta  # forgetting rate
         self.deletion_threshold = DT
-        self.H = 1 # default
+        self.H = 1  # default
         self.W = 1
         self.zero = None
         self.relational_graph = False
 
-
     def get_N(self):
         """returns the number of parsed observations"""
-        assert len(self.chunks)>0
+        assert len(self.chunks) > 0
         N = 0
         for i in self.chunks:
             N = N + self.chunks[i].count
         return N
 
-    def get_N_transition(self, dt = None):
+    def get_N_transition(self, dt=None):
         """returns the number of parsed observations"""
-        assert len(self.chunks)>0
+        assert len(self.chunks) > 0
 
         if dt == None:
             N_transition = 0
@@ -69,15 +70,14 @@ class CG1:
                     N_transition = N_transition + self.chunks[chunk].adjacency[dt].values()
             return N_transition
 
-
     def empty_counts(self):
         """empty count entries and transition entries in each chunk"""
-        for ck in self.chunks:
+        for ck in self.chunks.values():
             ck.count = 0
             ck.empty_counts()
         return
 
-    def extrapolate_variable(self,chunk):
+    def extrapolate_variable(self, chunk):
         transition = chunk.adjacency
         count = 0
         entailment = {}
@@ -86,87 +86,86 @@ class CG1:
                 count = count + 1
             entailment[otherchunk] = sum(transition[otherchunk].item())
 
-        Var = Chunk([], variable=True, count=count, H=None, W=None, pad=1, entailment = entailment)
+        Var = Chunk([], variable=True, count=count, H=None, W=None, pad=1, entailment=entailment)
         for ck in entailment:
             ck.abstraction[Var] = sum(chunk.adjacency[ck].item())
         return
 
-    def abstraction_learning(self, ancestors):
-        # find all chunks with a common cause or a common effect, extrapolating them into a variable
-        if ancestors.cl == [] and ancestors.cr == []:
-            return
-        elif ancestors.cl !=[] and ancestors.cr == []:
-            abstraction_learning(ancestors.cr)
-        elif ancestors.cl ==[] and ancestors.cr !=[]:
-            abstraction_learning(ancestors.cl)
-        else:
-            abstraction_learning(ancestors.cl)
-            abstraction_learning(ancestors.cr)
+    # def abstraction_learning(self, ancestors):
+    #     # find all chunks with a common cause or a common effect, extrapolating them into a variable
+    #     if ancestors.cl == [] and ancestors.cr == []:
+    #         return
+    #     elif ancestors.cl != [] and ancestors.cr == []:
+    #         abstraction_learning(ancestors.cr)
+    #     elif ancestors.cl == [] and ancestors.cr != []:
+    #         abstraction_learning(ancestors.cl)
+    #     else:
+    #         abstraction_learning(ancestors.cl)
+    #         abstraction_learning(ancestors.cr)
 
-    def hypothesis_test(self,clidx,cridx,dt):
+    def hypothesis_test(self, clidx, cridx, dt):
         cl = self.chunks[clidx]
         cr = self.chunks[cridx]
-        assert len(cl.adjacency)>0
-        assert dt in list(cl.adjacency.keys())
+        assert len(cl.adjacency) > 0
+        assert dt in list(cl.adjacency[cridx].keys())
         N = self.get_N()
-        N_transition = self.get_N_transition(dt = dt)
+        N_transition = self.get_N_transition(dt=dt)
 
         N_min = 5
         # Expected
-        ep1p1 = (cl.count/N) * (cr.count/N) * N_transition
-        ep1p0 = (cl.count/N) * (N - cr.count)/N * N_transition
-        ep0p1 = (N - cl.count)/N * (cr.count/N) * N_transition
-        ep0p0 = (N - cl.count)/N * (N - cr.count)/N * N_transition
+        ep1p1 = (cl.count / N) * (cr.count / N) * N_transition
+        ep1p0 = (cl.count / N) * (N - cr.count) / N * N_transition
+        ep0p1 = (N - cl.count) / N * (cr.count / N) * N_transition
+        ep0p0 = (N - cl.count) / N * (N - cr.count) / N * N_transition
 
         # Observed
-        op1p1 = cl.adjacency[dt][cridx]
-        op1p0 = cl.get_N_transition(dt) - cl.adjacency[dt][cridx]
+        op1p1 = cl.adjacency[cridx][dt]
+        op1p0 = cl.get_N_transition(dt) - cl.adjacency[cridx][dt]
         op0p1 = 0
         op0p0 = 0
-        for ncl in list(self.chunks):# iterate over p0, which is the cases where cl is not observed
+        for ncl in list(self.chunks.values()):  # iterate over p0, which is the cases where cl is not observed
             if ncl != cl:
-                if dt in list(ncl.adjacency.keys()):
-                    if cridx in list(ncl.adjacency[dt].keys()):
-                        op0p1 = op0p1 + ncl.adjacency[dt][cridx]
-                        for ncridx in list(ncl.adjacency[dt].keys()):
-                            if ncridx != cr:
-                                op0p0 = op0p0 + ncl.adjacency[dt][ncridx]
+                if cridx in list(ncl.adjacency.keys()):
+                    if dt in list(ncl.adjacency[cridx].keys()):
+                        op0p1 = op0p1 + ncl.adjacency[cridx][dt]
+                        for ncridx in list(ncl.adjacency.keys()):
+                            if self.chunks[ncridx] != cr:
+                                op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
 
         if op0p0 <= N_min or op1p0 <= N_min or op1p1 <= N_min or op0p1 <= N_min:
             return True
         else:
-            _, pvalue = stats.chisquare([op1p1,op1p0,op0p1,op0p0], f_exp=[ep1p1,ep1p0,ep0p1,ep0p0], ddof=1)
+            _, pvalue = stats.chisquare([op1p1, op1p0, op0p1, op0p0], f_exp=[ep1p1, ep1p0, ep0p1, ep0p0], ddof=1)
             # print('p value is ', pvalue)
             if pvalue < 0.05:
-                return False # reject independence hypothesis, there is a correlation
+                return False  # reject independence hypothesis, there is a correlation
             else:
                 return True
 
-
     def getmaxchunksize(
-        self,
+            self,
     ):  # TODO: alternatively, update this value upon every chunk creation
         maxchunksize = 0
         if len(self.chunks) > 0:
-            for ck in self.chunks:
+            for ck_key, ck in self.chunks.items():
                 if ck.volume > maxchunksize:
                     maxchunksize = ck.volume
 
         return maxchunksize
 
-    def observation_to_tuple(self,relevant_observations):
+    def observation_to_tuple(self, relevant_observations):
         """relevant_observations: array like object"""
-        index_t, index_i, index_j = np.nonzero(relevant_observations)# observation indexes
-        value = [relevant_observations[t,i,j] for t,i,j in zip(index_t,index_i,index_j) if relevant_observations[t,i,j]>0]
+        index_t, index_i, index_j = np.nonzero(relevant_observations)  # observation indexes
+        value = [relevant_observations[t, i, j] for t, i, j in zip(index_t, index_i, index_j) if
+                 relevant_observations[t, i, j] > 0]
         content = set(zip(index_t, index_i, index_j, value))
         maxT = max(index_t)
-        return (content,maxT)
+        return (content, maxT)
 
     def update_hw(self, H, W):
         self.H = H
         self.W = W
         return
-
 
     def get_M(self):
         return self.M
@@ -190,10 +189,10 @@ class CG1:
 
         for ck in init:
             this_chunk = ck
-            while len(this_chunk.cl) > 0: # has children
+            while len(this_chunk.cl) > 0:  # has children
 
-                if len(this_chunk.cl) == 1: #only one children
-                    if this_chunk.acl == []:# ancestor node
+                if len(this_chunk.cl) == 1:  # only one children
+                    if this_chunk.acl == []:  # ancestor node
                         self.ancestors.pop(this_chunk)
                         self.ancestors.__add__(this_chunk.cl)
                     else:
@@ -203,10 +202,8 @@ class CG1:
                         this_chunk.acr = []
                     for rightkid in this_chunk.cr:
                         this_chunk.cl.__add__(rightkid)
-                        rightkid.cl = ancestor# TODO: can add right chunk ancestor to children as well.
+                        rightkid.cl = ancestor  # TODO: can add right chunk ancestor to children as well.
         return
-
-
 
     def get_T(self):
         # TODO: have not specified whether the transition is across space, or time, or space time, this would
@@ -226,7 +223,7 @@ class CG1:
             chunk.to_array()
         return
 
-    def save_graph(self, name = '', path = ''):
+    def save_graph(self, name='', path=''):
         import json
         '''save graph configuration for visualization'''
         chunklist = []
@@ -252,11 +249,10 @@ class CG1:
         return dictionary
 
     # update graph configuration
-    def add_chunk(self, newc, leftkey= None, rightkey = None):
+    def add_chunk(self, newc, leftkey=None, rightkey=None):
         self.vertex_list.append(newc.key)
-        self.chunks[newc.key] = newc # add observation
-        newc.index = self.chunks.index(newc)
-        newc.H = self.H # initialize height and weight in chunk
+        self.chunks[newc.key] = newc  # add observation
+        newc.H = self.H  # initialize height and weight in chunk
         newc.W = self.W
         # compute the x and y location of the chunk based on pre-existing
         # graph configuration, when this chunk first emerges
@@ -269,8 +265,8 @@ class CG1:
             leftparent = self.chunks[leftkey]
             rightparent = self.chunks[rightkey]
             l_x, l_y = leftparent.vertex_location
-            r_x, r_y = rightparent.vertex_location[rightkey]
-            x_c = (l_x + r_x)*0.5
+            r_x, r_y = rightparent.vertex_location#[rightkey]
+            x_c = (l_x + r_x) * 0.5
             y_c = self.y0
             self.vertex_location = [x_c, y_c]
             self.y0 = self.y0 + 1
@@ -282,22 +278,27 @@ class CG1:
 
         return
 
+    def independence_test(self):
+        """Evaluate the independence as a stopping criteria for the model"""
+
+        return False
+
     def relational_graph_refactorization(self, newc):
         # find biggest common intersections between newc and all other previous chunks in the set
         for chunk in self.vertex_list:
-            if chunk.children == []:# start from the leaf node to find the biggest smaller intersection.
+            if chunk.children == []:  # start from the leaf node to find the biggest smaller intersection.
                 max_intersect = newc.content.intersection(chunk.content)
-                if max_intersect in self.visible_chunk_list: # create an edge between the biggest smaller intersection and newc
+                if max_intersect in self.visible_chunk_list:  # create an edge between the biggest smaller intersection and newc
                     idx_max_intersect = self.visible_chunk_list[max_intersect].idx
-                    if ~self.check_ancestry(chunk, max_intersect):# link max intersect to newc
+                    if ~self.check_ancestry(chunk, max_intersect):  # link max intersect to newc
                         self.edge_list.append((idx_max_intersect, self.chunks[newc].idx))
                         self.chunks[idx_max_intersect].children.append(newc)
-                    else: # in chunk's ancestors:
+                    else:  # in chunk's ancestors:
                         print('intersection already exist')
                         self.edge_list.append((idx_max_intersect, self.chunks[newc].idx))
                         chunk.children.append(newc)
-                else: #if not, add link from this chunk to newc and some chunk
-                    max_intersect_chunk = Chunk(list(max_intersect), H= chunk.H, W= chunk.W)
+                else:  # if not, add link from this chunk to newc and some chunk
+                    max_intersect_chunk = Chunk(list(max_intersect), H=chunk.H, W=chunk.W)
                     self.add_chunk(max_intersect_chunk, leftidx=None, rightidx=None)
                     self.edge_list.append((self.chunks[max_intersect_chunk].idx, self.chunks[newc].idx))
                     self.edge_list.append((self.chunks[max_intersect_chunk].idx, self.chunks[chunk].idx))
@@ -305,11 +306,12 @@ class CG1:
                     max_intersect_chunk.children.append(chunk)
         return
 
-
-    def check_ancestry(self,chunk,content):
+    def check_ancestry(self, chunk, content):
         # check if content belongs to ancestor
-        if chunk.parents == []:return content!=chunk.content
-        else:return np.any([self.check_ancestry(parent,content) for parent in chunk.parents])
+        if chunk.parents == []:
+            return content != chunk.content
+        else:
+            return np.any([self.check_ancestry(parent, content) for parent in chunk.parents])
 
     def update_empty(self, n_empty):
         """chunk: nparray converted to tuple format
@@ -318,19 +320,16 @@ class CG1:
         self.M[ZERO] = self.M[ZERO] + n_empty
         return
 
-
-
-    def check_chunk_in_M(self,chunk):
+    def check_chunk_in_M(self, chunk):
         """chunk object"""
         # content should be the same set
         for otherchunk in M:
             intersect = otherchunk.intersection(chunk)
-            if len(intersect) ==chunk.volume:
+            if len(intersect) == chunk.volume:
                 return otherchunk
         return
 
-
-    def check_chunkcontent_in_M(self,chunkcontent):
+    def check_chunkcontent_in_M(self, chunkcontent):
         if chunkcontent in self.chunks:
             return self.chunks[chunkcontent]
         else:
@@ -340,10 +339,10 @@ class CG1:
         """chunk: nparray converted to tuple format
         Every time when a new chunk is identified, this function should be called """
         matchingchunk = self.check_chunkcontent_in_M(chunkcontent)
-        if matchingchunk!= None:
+        if matchingchunk != None:
             self.M[matchingchunk] = self.M[matchingchunk] + 1
         else:
-            matchingchunk = Chunk(chunkcontent, H=self.H, W=self.W) # create an entirely new chunk
+            matchingchunk = Chunk(chunkcontent, H=self.H, W=self.W)  # create an entirely new chunk
             self.M[matchingchunk] = 1
             self.add_chunk(matchingchunk)
         return matchingchunk
@@ -353,18 +352,17 @@ class CG1:
     def forget(self):
         """ discounting past observations if the number of frequencies is beyond deletion threshold"""
         for chunk in self.chunks:
-            chunk.count = chunk.count* self.theta
+            chunk.count = chunk.count * self.theta
             # if chunk.count < self.deletion_threshold: # for now, cancel deletion threshold, as index to chunk is
             # still vital
             #     self.chunks.pop(chunk)
             for dt in list(chunk.adjacency.keys()):
                 for adj in list(chunk.adjacency[dt].keys()):
-                    chunk.adjacency[dt][adj] = chunk.adjacency[dt][adj]* self.theta
-                    if chunk.adjacency[dt][adj]<self.deletion_threshold:
+                    chunk.adjacency[dt][adj] = chunk.adjacency[dt][adj] * self.theta
+                    if chunk.adjacency[dt][adj] < self.deletion_threshold:
                         chunk.adjacency[dt].pop(adj)
 
         return
-
 
     def checkcontentoverlap(self, content):
         '''check of the content is already contained in one of the chunks'''
@@ -373,41 +371,39 @@ class CG1:
         else:
             return None
 
-
-
-
     def chunking_reorganization(self, prevkey, currentkey, cat, dt):
-        def findancestors(c,L):
-            if c.acl == []:
+        def findancestors(c, L):
+            if len(c.acl) == 0:
                 return
             else:
-                L = L + c.acl
-                for i in c.acl:
+                L = L + list(c.acl.keys())
+                for i in list(c.acl.keys()):
                     findancestors(i, L)
 
         prev = self.chunks[prevkey]
         current = self.chunks[currentkey]
         chunk = self.checkcontentoverlap(cat.key)
-        if chunk is None: # add concatinated chunk to the network
+        if chunk is None:  # add concatinated chunk to the network
             # TODO： add chunk to vertex
             self.add_chunk(cat, leftkey=prevkey, rightkey=currentkey)
             # iterate through all chunk transitions that could lead to the same concatination chunk
-            cat.count = prev.adjacency[dt][currentkey] # need to add estimates of how frequent the joint frequency occurred
-            prev.count = prev.count - cat.count # reduce one sample observation from the previous chunk
+            cat.count = prev.adjacency[currentkey][dt]  # need to add estimates of how frequent the joint frequency occurred
+            prev.count = prev.count - cat.count  # reduce one sample observation from the previous chunk
             current.count = current.count - cat.count
-            prev.adjacency[current][dt] = 0
+            prev.adjacency[current.key][dt] = 0
+
 
             cat.adjacency = copy.deepcopy(current.adjacency)
             # check other pathways that arrive at the same chunk based on cat's ancestor
             candidate_cls = []
-            findancestors(cat, candidate_cls) # look for all ancestoral graph path that arrive at cat
+            findancestors(cat, candidate_cls)  # look for all ancestoral graph path that arrive at cat
             for ck in candidate_cls:
                 for _cr in ck.adjacency:
                     for _dt in ck[_cr]:
                         if _cr != currentkey and ck.key != prevkey and _dt != dt:
                             _cat = combinechunks(ck.key, _cr, _dt, self)
-                            if _cat!=None:
-                                if _cat==cat:
+                            if _cat != None:
+                                if _cat == cat:
                                     # TODO: may need to merge nested dictionary
                                     _cat_count = self.chunks[ck].adjacency[_cr][_dt]
                                     cat.count = cat.count + _cat_count
@@ -422,10 +418,10 @@ class CG1:
                                     cat.acl = self.check_and_add_to_dict(cat.acl, leftparent)
                                     cat.acr = self.check_and_add_to_dict(cat.acl, rightparent)
         else:
-            chunk.count = chunk.count + prev.adjacency[dt][currentkey]  # need to add estimates of how frequent the joint frequency occurred
-            prev.count = prev.count - cat.count# reduce one sample observation from the previous chunk
+            chunk.count = chunk.count + prev.adjacency[currentkey][dt]  # need to add estimates of how frequent the joint frequency occurred
+            prev.count = prev.count - cat.count  # reduce one sample observation from the previous chunk
             current.count = current.count - cat.count
-            prev.adjacency[current][dt] = 0
+            prev.adjacency[current.key][dt] = 0
 
         return
 
@@ -446,22 +442,22 @@ class CG1:
         return
 
     def variable_finding(self, cat):
-        v = 3 # threshold of volume of intersection
-        app_t = 3# applicability threshold
+        v = 3  # threshold of volume of intersection
+        app_t = 3  # applicability threshold
         '''cat: new chunk which just entered into the system
         find the intersection of cat with the pre-existing chunks '''
         # (content of intersection, their associated chunks) ranked by the applicability threshold
         # alternatively, the most applicable intersection:
         max_intersect = None
         max_intersect_count = 0
-        max_intersect_chunks = [] # chunks that needs to be merged
+        max_intersect_chunks = []  # chunks that needs to be merged
         for ck in self.chunks:
             intersect = ck.content.intersection(cat.content)
             intersect_chunks = []
             c = 0  # how often this intersection is applicable across chunks
-            if len(intersect) != len(cat.content) and len(intersect) > v:# not the same chunk
+            if len(intersect) != len(cat.content) and len(intersect) > v:  # not the same chunk
                 # look for overlap between this intersection and other chunks:
-                for ck_ in self.chunks:# how applicable is this intersection, to other previously learned chunks
+                for ck_ in self.chunks:  # how applicable is this intersection, to other previously learned chunks
                     if ck_.content.intersection(intersect) == len(intersect):
                         c = c + 1
                         intersect_chunks.append(ck_)
@@ -471,7 +467,7 @@ class CG1:
                 max_intersect_count = c
                 max_intersect_chunks = intersect_chunks
                 max_intersect = intersect
-        if max_intersect!=None: # reorganize chunk list to integrate with variables
+        if max_intersect != None:  # reorganize chunk list to integrate with variables
             self.merge_chunks(max_intersect, max_intersect_chunks, max_intersect_count)
         return
 
@@ -482,17 +478,17 @@ class CG1:
         var = Variable(max_intersect_chunks, totalcount=max_intersect_count)
         self.set_variable_adjacency(var, max_intersect_chunks)
 
-        chk = None # find if intersection chunk exists in the past
+        chk = None  # find if intersection chunk exists in the past
         for ck in self.chunks:
             if ck.content.intersection(max_intersect) == len(ck.content):
                 chk = ck
-        if chk == None: #TODO: add new chunk here
+        if chk == None:  # TODO: add new chunk here
             chk = Chunk(max_intersect, count=max_intersect_count)
         else:
             chk.count = max_intersect_count
 
         # TODO: add new variable chunk here.
-        chk_var = Chunk([chk, var])# an agglomeration of chunk with variable is created
+        chk_var = Chunk([chk, var])  # an agglomeration of chunk with variable is created
 
         return
 
@@ -539,30 +535,39 @@ class CG1:
         prob = [k / sum(prob) for k in prob]
         return self.sample_from_distribution(states, prob)
 
-    def imagination1d(self, seql = 10):
+    def imagination1d(self, seql=10):
         ''' Imagination on one dimensional sequence '''
-        self.convert_chunks_in_arrays() # convert chunks to np arrays
-        img = np.zeros([1,1,1])
+        self.convert_chunks_in_arrays()  # convert chunks to np arrays
+        img = np.zeros([1, 1, 1])
         l = 0
-        while l< seql:
-            chunk,p = self.sample_marginal()
+        while l < seql:
+            chunk, p = self.sample_marginal()
             chunkarray = chunk.arraycontent
-            img = np.concatenate((img,chunkarray), axis=0)
+            img = np.concatenate((img, chunkarray), axis=0)
             print('sampled chunk array is ', chunkarray, ' p = ', p)
             print('imaginative sequence is ', img)
             l = l + chunkarray.shape[0]
         return img[1:seql, :, :]
 
-
     def abstraction_learning(self):
-        # the order of abstraction level, from decendents until the earlier abstractions, is a matter of debate.
+        """variable construction: chunks that share common ancestors and common descendents."""
+        # check the case for: pre---variable---post, for each dt time: variables with common cause and common effect
+        # TODO: another version wtih more flexible dt
+        T = 3
         for chunk in self.latest_descendents:
             dts = chunk.adjacency.keys()
             for dt in dts:
                 entailing_chunks = chunk.adjacency[dt].keys()
-                v = Variable(entailingchunks=entailing_chunks)
-                self.variables[v.key] = v
+                for postchunk in self.latest_descendents:
+                    for dts1 in postchunk.preadjacency.keys():
+                        chunks_post = postchunk.adjacency[dts1].keys()
+                        candidate_variable_entailment = chunks_post.intersect(entailing_chunks)
+                        if len(candidate_variable_entailment) > T: # register a variable
+                            v = Variable(entailingchunks=candidate_variable_entailment)
+                            self.variables[v.key] = v
+                            for ck in candidate_variable_entailment:
+                                ck.variable[v.key] = v
+                                v.count = v.count + ck.count
+                            # TODO: implement variable binding as new chunk here, test variable independence
+
         return
-
-
-
