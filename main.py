@@ -1,9 +1,6 @@
 from Hand_made_generative import *
 from Generative_Model import *
 from Learning import *
-from wikitext2 import *
-from plotting import *
-from train import *
 from CG1 import *
 from chunks import *
 import numpy as np
@@ -12,6 +9,7 @@ from PIL import Image
 import os
 from time import time
 from chunks import *
+from abstraction_test import *
 
 
 def measure_KL():
@@ -406,43 +404,6 @@ def c3_chunk_learning():
 
     return
 
-def calcium_imaging():
-
-    ################# Calcium Imagining Processing #################
-    new_num_arr = np.load('../rasteroutput.npy')  # load
-    T = 0.2
-    new_num_arr[new_num_arr > T] = 1
-    new_num_arr[new_num_arr < T] = 0
-    new_num_arr = new_num_arr.T
-    seq = new_num_arr.reshape([23185, 100, 1])
-
-    cg = CG1(DT=0.1, theta=0.96)  # initialize chunking part with specified parameters
-    cg = hcm_learning(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
-    cg.convert_chunks_in_arrays()
-    data = []
-    for ck in cg.chunks:
-        data.append(ck.arraycontent)
-    np.save('calcium_imaging_data.npy', data, allow_pickle=True)
-
-
-    data = []
-    for ck in list(cg.chunks):
-        if len(ck.content)>1:
-            arraycontent = np.zeros((30, ck.H, ck.W))
-            print(arraycontent.shape)
-            for t, i, j, v in ck.content:
-                arraycontent[t, i, j] = v
-            data.append(arraycontent)
-    np.save('calcium_imaging_data.npy', data, allow_pickle=True)
-    calcium_imaging_data = np.load('calcium_imaging_data.npy', allow_pickle=True)
-    # TODO： chunk identification can speed up with parent and children chunks, but since all chunks are scanned one by one it takes a long time.
-    # TODO： sequence deletion can also take a long time, as time index is refactored.
-    return
-
-
-
-
-
 def evaluate_perplexity(data, chunkrecord):
     #TODO: convert chunkrecord into sequence of probability
     p = []
@@ -599,7 +560,33 @@ def test_simple_abstraction():
 
     return
 
+
+def parseDNA():
+    # TO use: seq = parseDNA()
+    directory = "/Users/swu/Documents/MouseHCM/HSTC/genome_data/genome_assemblies_genome_fasta/ncbi-genomes-2022-12-01" \
+                "/GCF_000005845.2_ASM584v2_genomic.txt"
+    with open(directory) as f:
+        STR = f.read()
+
+    def split(word):
+        return [char for char in word]
+
+    IR = split(STR)
+    seq = []
+    for it in IR:
+        if it == 'A':
+            seq.append(1)
+        if it == 'T':
+            seq.append(2)
+        if it == 'C':
+            seq.append(3)
+        if it == 'G':
+            seq.append(4)
+    seq = np.array(seq).reshape([len(seq), 1, 1])
+    return seq
+
 def main():
+
     test_simple_abstraction()
 
 

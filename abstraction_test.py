@@ -1,7 +1,9 @@
-import CG1
-import chunks
-from Learning import *
 from buffer import *
+
+from CG1 import *
+from chunks import *
+import numpy as np
+from time import time
 
 def test_abstraction():
     cg = CG1.CG1()
@@ -15,6 +17,67 @@ def test_abstraction():
     cg.visible_chunk_list = [c1.content, c2.content, c3.content]
     cg = abstraction(cg) # or something that cg.abstraction to make it a graph pruning routine in cg.
 
+
+def test1_recursive_match():
+    cg = CG1()
+    two = Chunk([(0, 0, 0, 2.0)])
+    three = Chunk([(0, 0, 0, 3.0)])
+    four = Chunk([(0, 0, 0, 4.0)])
+    five = Chunk([(0, 0, 0, 5.0)])
+    one = Chunk([(0, 0, 0, 1.0)])
+
+    for item in [one, two, three, four, five]:
+        cg.add_chunk(item)
+
+    threeorfour = Variable([three, four], cg)
+    oneorfive = Variable([one, five], cg)
+
+    twov1v2 = Chunk([(0, 0, 0, 2)])  # overwirting
+    twov1v2.ordered_content = two.ordered_content.copy()
+
+    twov1v2.ordered_content['1'] = threeorfour
+    threeorfour.chunks[twov1v2.key] = twov1v2
+
+    twov1v2.ordered_content['2'] = oneorfive
+    oneorfive.chunks[twov1v2.key] = twov1v2
+
+    cg.add_chunk(twov1v2)
+
+    seqc = {(0, 0, 0, 2.0), (1, 0, 0, 3.0), (2, 0, 0, 7.0), (3, 0, 0, 3)}
+
+    match, matchingcontent = check_recursive_match(seqc, set(), twov1v2)
+    return
+
+
+def test2_recursive_match():
+    cg = CG1()
+    two = Chunk([(0, 0, 0, 2.0)])
+    three = Chunk([(0, 0, 0, 3.0)])
+    four = Chunk([(0, 0, 0, 4.0)])
+    five = Chunk([(0, 0, 0, 5.0)])
+    one = Chunk([(0, 0, 0, 1.0)])
+
+    for item in [one, two, three, four, five]:
+        cg.add_chunk(item)
+
+    threeorfour = Variable([three, four], cg)
+    twov1 = Chunk(list(two.ordered_content['0']))
+    twov1.ordered_content = two.ordered_content.copy()
+    twov1.ordered_content['1'] = threeorfour
+    cg.add_chunk(twov1)
+    threeorfour.chunks[twov1.key] = twov1
+
+    twov1orfive = Variable([twov1, five], cg)
+    onetwov1orfive = Chunk(list(one.ordered_content['0']))
+    onetwov1orfive.ordered_content = one.ordered_content.copy()
+    onetwov1orfive.ordered_content['1'] = twov1orfive
+    cg.add_chunk(onetwov1orfive)
+    twov1orfive.chunks[onetwov1orfive.key] = onetwov1orfive
+    seqc = {(0, 0, 0, 1.0), (2, 0, 0, 5.0), (1, 0, 0, 9.0)}
+
+    match, matchingcontent = check_recursive_match(seqc, set(), onetwov1orfive)
+    print(check_recursive_match(seqc, set(), onetwov1orfive))
+    return
 
 
 def abstraction(cg):
@@ -70,9 +133,6 @@ def change_ref_frame(intersection):
     return {tuple(a) for a in intersection}
 
 
-
-
-
 def rational_abstraction(cg, proposed_abstractions): # or, cg.rational_abstraction
     for abstr_ck in proposed_abstractions:
         # decide on whether this abstract chunk with its discovered intersection within should be integrated into the abstraction graph
@@ -82,14 +142,15 @@ def rational_abstraction(cg, proposed_abstractions): # or, cg.rational_abstracti
 
 def evaluate_abstraction_advantage(self, abstr_ck):
 
-    """How does one abstraction help with representation improvement"""
-    abstraction_chunk = chunks.Chunk(abstraction, count = freq) # create an abstraction
-    for chunks in self.chunks:
-
-    # for one representation
-    info = 0
-    for a in cg.abstract_chunks:
-        info = info + evaluate_info(a)
+    # """How does one abstraction help with representation improvement"""
+    # abstraction_chunk = chunks.Chunk(abstraction, count = freq) # create an abstraction
+    # for chunks in self.chunks:
+    #
+    # # for one representation
+    # info = 0
+    # for a in cg.abstract_chunks:
+    #     info = info + evaluate_info(a)
+    pass
 
 
 
@@ -108,6 +169,7 @@ def evaluate_info(chunk):
 def generate_abstraction_tree(cg):
     # returns, vertex and edges, in addition to vertex locations of an abstract graph, and the binary encoding of
     # abstract chunks
+    pass
 
 def change_representation(cg, abstr_chunk, entailment,abstraction):
     # find the immediate entailment and immediate abstraction for an abstract chunk
@@ -126,7 +188,7 @@ def change_representation(cg, abstr_chunk, entailment,abstraction):
 # parsing with abstraction structure embedded in the hierarchy
 def parsing():
 
-
+    pass
 
 def variable_finding(self, cat):
     v = 3 # threshold of volume of intersection

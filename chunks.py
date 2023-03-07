@@ -6,43 +6,61 @@ import numpy as np
 class Chunk:
     """ Spatial Temporal Chunk
         At the moment, it lacks a unique identifier for which of the chunk is which, making the searching process
-        diffidult, ideally, each chunk should have its own unique name, (ideally related to how it looks like) """
+        difficult, ideally, each chunk should have its own unique name, (ideally related to how it looks like) """
 
     # A code name unique to each chunk
-    def __init__(self, chunkcontent, variable=False, count=1, H=None, W=None, pad=1, entailment={}):
+    def __init__(self, chunkcontent, variables={}, ordered_content = None, count=0, H=1, W=1, pad=1, entailment = []):
         """chunkcontent: a list of tuples describing the location and the value of observation"""
         # TODO: make sure that there is no redundency variable
-        self.variable = variable
-        self.content = set(chunkcontent)
-        self.key = tuple(sorted(self.content))
-        self.count = count  #
-        self.T = int(max(np.array(chunkcontent)[:, 0]) + 1)  # those should be specified when joining a chunking graph
+        ########################### Content and Property ########################
+        #self.current_chunk_content() # dynamic value, to become the real content for variable representations
+        if len(variables)==0: self.variables = set()
+        else: self.variables = variables
+
+        if ordered_content!=None:
+            self.ordered_content = ordered_content
+            self.key = ''
+            for i in range(0, len(ordered_content)):
+                eachcontent = ordered_content[str(i)]
+                if type(eachcontent) == str:
+                    self.key = self.key + eachcontent
+                else:
+                    self.key = self.key + str(tuple(sorted(eachcontent)))
+        else:
+            self.ordered_content = {'0': set(chunkcontent)} #specify the order of chunks and variables
+            self.key = tuple(sorted(chunkcontent))
+
+
+        self.content = self.get_content(self.ordered_content)
+        self.volume = sum([len(chunkcontent) for chunkcontent in self.ordered_content.values()])
+        #self.T = sum([int(max(np.array(chunkcontent)[:, 0]) + 1) for chunkcontent in self.ordered_content.values()])  # those should be specified when joining a chunking graph
+        self.T = 0 if chunkcontent == list([]) else int(max(np.atleast_2d(np.array(list(self.content)))[:, 0]) + 1) # TODO: fix summation problem
         self.H = H
         self.W = W
-        self.index = None
         self.vertex_location = None
         self.pad = pad  # boundary size for nonadjacency detection, set the pad to not 1 to enable this feature.
+        self.count = count  #
+        self.birth = None  # chunk creation time
+
+        ########################### Relational Connection ########################
         self.adjacency = {} # chunk --> something
         self.preadjacency = {} # something --> chunk
-        self.birth = None  # chunk creation time
-        self.volume = len(self.content)  #
-        self.indexloc = self.get_index()
+        self.indexloc = self.get_index() # TODO: index location
         self.arraycontent = None
         self.boundarycontent = set()
-        T, H, W, cRidx = self.get_index_padded()
-        self.D = 10
-        self.matching_threshold = 0.8
-        self.matching_seq = {}
-        self.abstraction = []  # what are the variables summarizing this chunk
-        self.variable = [] # the variables that this chunk is included as an instance
 
+        self.abstraction = []  # what are the variables summarizing this chunk
         self.entailment = entailment  # concrete chunks that the variable is pointing to
         self.cl = {}  # left decendent
         self.cr = {}  # right decendent
         self.acl = {} # left ancestor
         self.acr = {} # right ancestor
 
-        # discount coefficient when computing similarity between two chunks, relative to the temporal discount being 1
+        ###################### discount coefficient for similarity computation ########################
+        # T, H, W, cRidx = self.get_index_padded() # TODO: index location
+        self.D = 10
+        self.matching_threshold = 0.8
+        self.matching_seq = {}
         self.h = 1.
         self.w = 1.
         self.v = 1.
@@ -57,6 +75,26 @@ class Chunk:
     def __ne__(self, other):
         return not(self == other)
 
+
+    def get_random_name(self):
+        length = 4
+        letters = string.ascii_lowercase
+        result_str = ''.join(random.choice(letters) for i in range(length))
+        return result_str
+
+    def generate_content(self, seqc):
+        # look for content in itself that matches the sequence
+        # for i in self.ordered_content:
+        pass
+
+    def get_content(self,ordered_content):
+        # ordered_content: an ordered list with the
+        if len(self.ordered_content)==1:
+            return self.ordered_content['0']
+        else:
+            pass
+            # return the variable instantiated content
+            return
 
     def get_full_content(self):
         '''returns a list of all possible content that this chunk can take'''
@@ -101,12 +139,49 @@ class Chunk:
         return N
 
     def get_index(self):
-        ''' Get index location the nonzero chunk locations in chunk content '''
-        return set(map(tuple, np.array(list(self.content))[:, 0:3]))
+        ''' Get index location of the concrete chunks in chunk content, variable index is not yet integrated '''
+        if len(self.ordered_content['0'])==0:
+            return set()
+        elif len(self.variables) >0:
+            return set() # give up when there are variables in the sequence
+        else:
+            # TODO: integrate with ordered chunkcontent
+            index_set = set()
+            rank = []
+            for i in self.ordered_content.keys():
+                if type(self.ordered_content[i]) != str:# exclude variables, for now.
+                    rank.append(eval(i))
+
+            index0 = set(map(tuple, np.atleast_2d(list(self.ordered_content[str(rank[0])]))[:, 0:3]))
+            try:
+                t_shift = int(np.atleast_2d(list(self.ordered_content[str(rank[0])]))[:, 0].max() + 1)  # time shift is the biggest value in the 0th dimension
+            except(TypeError):
+                print('')
+            index_set.update(index0)
+            for i in range(1, rank[-1]):
+                index = set(map(tuple, np.atleast_2d(list(self.ordered_content[str(i)]))[:, 0:3]))
+                shifted_index = self.timeshift(index, t_shift)
+                index_set.update(shifted_index)
+                t_shift = int(np.atleast_2d(list(self.ordered_content[str(i)]))[:, 0].max() + 1)# time shift is the biggest value in the 0th dimension
+
+            return index_set
+
+    def timeshift(self, content, t):
+        shiftedcontent = []
+        for tup in list(content):
+            lp = list(tup)
+            lp[0] = lp[0] + t
+            shiftedcontent.append(tuple(lp))
+        return set(shiftedcontent)
 
     def get_index_padded(self):
+        # TODO: integrate with ordered chunkcontent
+
         ''' Get padded index arund the nonzero chunk locations '''
-        padded_index = self.indexloc.copy()
+        try:
+            padded_index = self.indexloc.copy()
+        except(AttributeError):
+            print('nonetype')
         chunkcontent = self.content
         self.boundarycontent = set()
         T, H, W = self.T, self.H, self.W
@@ -150,7 +225,7 @@ class Chunk:
                 return None
 
         else:
-            clcrcontent = self.content | cR.content
+            clcrcontent = self.ordered_content['0'] | cR.ordered_content['0']
             clcr = Chunk(list(clcrcontent), H=self.H, W=self.W)
             return clcr
 
@@ -184,8 +259,7 @@ class Chunk:
             averaged_content.add(tuple(thispt))
 
         self.content = averaged_content
-        self.T = int(np.atleast_2d(np.array(list(self.content)))[:,
-                     0].max() + 1)  # those should be specified when joining a chunking graph
+        self.T = int(np.atleast_2d(np.array(list(self.content)))[:,0].max() + 1)  # those should be specified when joining a chunking graph
         self.get_index()
         self.get_index_padded()  # update boundary content
         return
@@ -200,6 +274,8 @@ class Chunk:
             for ck in self.variable:
                 match.append(ck.variable_check_match(seq))
             return any(match)
+        
+        
 
     def check_match(self, seq):
         ''' Check explicit content match'''
@@ -230,9 +306,25 @@ class Chunk:
             return True  # 80% correct
         else:
             return False
+        
 
-    def check_adjacency(self, cR, dt=0):
 
+
+    def check_adjacency(self, cR):
+        # dt: start_post - start_prev
+        """Check if two chunks overlap/adjacent in their content and location"""
+        cLidx = self.indexloc
+        _,_,_, cRidx = cR.get_index_padded()
+        intersect_location = cLidx.intersection(cRidx)
+        if (
+            len(intersect_location) > 0
+        ):  # as far as the padded chunk and another is intersecting,
+            return True
+        else:
+            return False
+
+    def check_adjacency_approximate(self, cR, dt=0):
+        # problematic implementation based on min and max of the boundaries.
         def overlaps(a, b):
             """
             Return the amount of overlap,
@@ -244,7 +336,6 @@ class Chunk:
             return min(a[1], b[1]) - max(a[0], b[0]) - 1
 
         """Check if two chunks overlap/adjacent in their content and location"""
-        # TODO: can simply subtract the coordinate values and check the difference
         cLidx = self.indexloc
         cRidx = cR.indexloc
         intersect_location = cLidx.intersection(cRidx)
@@ -297,6 +388,8 @@ class Chunk:
         return D
 
     def update_transition(self, chunk, dt):
+        '''Update adjacency matrix connecting self to adjacent chunks with time distance dt
+        Also update the adjacenc matrix of variables '''
         if chunk.key in self.adjacency.keys():
             if dt in self.adjacency[chunk.key].keys():
                 self.adjacency[chunk.key][dt] = self.adjacency[chunk.key][dt] + 1
@@ -305,8 +398,6 @@ class Chunk:
         else:
             self.adjacency[chunk.key] = {}
             self.adjacency[chunk.key][dt] = 1
-
-        print(self.key, self.adjacency)
 
         if self.key in list(chunk.preadjacency.keys()): # preadjacency: something --> chunkidx
             if dt in list(chunk.preadjacency[self.key].keys()):
@@ -320,12 +411,11 @@ class Chunk:
             else:
                 chunk.preadjacency[self.key][dt] = 1
 
-
-        for v in self.variable:
-            if dt in v.adjacency[chunkkey].keys():
-                v.adjacency[chunkkey][dt] = v.adjacency[chunkkey][dt] + 1
+        for v in self.variables:
+            if dt in v.adjacency[chunk.key].keys():
+                v.adjacency[chunk.key][dt] = v.adjacency[chunk.key][dt] + 1
             else:
-                v.adjacency[chunkkey][dt] = 1
+                v.adjacency[chunk.key][dt] = 1
         return
 
     def contentagreement(self, content):
@@ -342,27 +432,41 @@ import string
 
 
 class Variable():
-    '''TODO: upon initialization, need to inherent previous counts '''
     """A variable can take on several contents"""
 
-    # A code name unique to each chunk
-    def __init__(self, entailingchunks, totalcount=1):  # how to define a variable?? a list of alternative
-        '''variablecontent: a list of possible content that a variable can take, it can be a list of sets, variables, and chunks '''
-        self.content = entailingchunks  # a variable is a pointer to several enlisted chunks
-        for chunk in entailingchunks:
-            chunk.variable.add(self)
-        self.totalcount = totalcount
+    # A code name unique to each variable
+    def __init__(self, entailingchunks, count=1):  # how to define a variable?? a list of alternative
+        ##################### Property Parameter ######################
+        self.count = self.get_count(entailingchunks)
         self.key = self.get_variable_key()
-        self.adjacency = self.get_adjacency(entailingchunks)  # should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
-        self.entailment = {}
-        self.volume = self.get_volume()# for comparing explanability sizes
+        self.current_content = None # dynamic value, any of the entailing chunks that this variable is taking its value in
+        self.entailingchunknames = self.getentailingchunknames(entailingchunks)
+        ##################### Relational Parameter ######################
+        self.adjacency = self.get_adjacency(entailingchunks)
+        # should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
+        self.entailingchunks = entailingchunks
+        self.chunks = {} # all chunks that contain this particular variable
+        self.ordered_content = {'0': self.key} #specify the order of chunks and variables
+        self.vertex_location = self.get_vertex_location(entailingchunks)
 
-        self.arraycontent = None
+
+        # There is only variable relationship, but no relationship between variable and left/right parent/child,
         self.boundarycontent = set()
         self.D = 1
         self.h = 1.
         self.w = 1.
         self.v = 1.
+
+        self.cl = {}  # left decendent
+        self.cr = {}  # right decendent
+        self.acl = {} # left ancestor
+        self.acr = {} # right ancestor
+
+    def get_count(self, entailingchunks):
+        count = 0
+        for ck in entailingchunks:
+            count = count + ck.count
+        return count
 
     def update(self, varinstance):  # when any of its associated chunks are identified
         if varinstance in self.content:
@@ -370,22 +474,26 @@ class Variable():
         self.totalcount += 1
         return
 
-    def get_volume(self):
-        v = 0
-        for item in self.content:
-            v = v + item.volume
-        return v/len(self.content)
+    def get_vertex_location(self, entailingchunks):
+        xs = 0
+        ys = 0
+        for ck in entailingchunks:
+            x,y = ck.vertex_location
+            xs = xs + x
+            ys = ys + y
+        return xs/len(entailingchunks), ys/len(entailingchunks)
 
     def get_adjacency(self, entailingchunks):
         # I think we might not need it
         adjacency = {}
         dts = set()
-
+        # entailingchunks = set(cg.chunks[item] for item in entailingchunks)
+        entailingchunks = set(entailingchunks)
         for chunk in entailingchunks:
             for cr in chunk.adjacency:
                 if cr in adjacency.keys():
                     for dt in chunk.adjacency[cr]:
-                        if dt in adjacency[cr].keys:
+                        if dt in list(adjacency[cr].keys()):
                             adjacency[cr][dt] = adjacency[cr][dt] + chunk.adjacency[cr][dt]
                         else:
                             adjacency[cr][dt] = chunk.adjacency[cr][dt]
@@ -393,7 +501,7 @@ class Variable():
                     adjacency[cr] = {}
                     for dt in chunk.adjacency[cr]:
                         adjacency[cr][dt] = chunk.adjacency[cr][dt]
-        return
+        return adjacency
 
     def update_transition(self, chunkidx, dt):  # _c_
         # transition can be chunk or variable
@@ -407,14 +515,20 @@ class Variable():
             self.adjacency[chunkidx] = {}
             self.adjacency[chunkidx][dt] = 1
 
+    def getentailingchunknames(self, entailingchunks):
+        """get the content of the entailing chunks"""
+        chunknames = set()
+        for ck in entailingchunks:
+            chunknames.add(ck.key)
+        return tuple(sorted(chunknames))
 
 
     def get_N_transition(self, dt):
-        assert dt in list(self.adjacency.keys())
         # todo: make nonozero
         N = 0
-        for item in self.adjacency[dt]:
-            N = N + self.adjacency[dt][item]
+        for chunk in self.adjacency:
+            if dt in self.adjacency[chunk]:
+                N = N + self.adjacency[chunk][dt]
         return N
 
     def check_adjacency(self, cR):
@@ -429,19 +543,24 @@ class Variable():
         # if the content agree with any of the chunks within the varible
         pass
 
-    def concatinate(self, cR):
-        '''concatinate a variable with a chunk, or a variable with a variable'''
-        # TODO: concatination:
-        if self.check_adjacency(cR):
-            # TODO: modify this part
-            clcrcontent = self.content | cR.content
-            clcr = Chunk(list(clcrcontent), H=self.H, W=self.W)
-
-        pass
+    def empty_counts(self):
+        self.count = 0
+        self.birth = None  # chunk creation time
+        # empty transitional counts
+        for dt in list(self.adjacency.keys()):
+            for chunkidx in list(self.adjacency[dt].keys()):
+                self.adjacency[dt][chunkidx] = 0
         return
+
 
     def get_variable_key(self):
         length = 4
         letters = string.ascii_lowercase
         result_str = ''.join(random.choice(letters) for i in range(length))
         return result_str
+
+    def check_variable_match(self, seqc):
+        '''Check any of variables included in the chunk is consistent with observations of the sequence copy'''
+        # for obj in self.content: # obj can be chunk, or variable
+        pass
+

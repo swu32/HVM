@@ -19,10 +19,6 @@ class CG1:
     -------
 
     """
-
-    # TODO: record which chunk created when
-    # TODO: record on the dependencies between the chunks
-
     def __init__(self, y0=0, x_max=0, DT=0.01, theta=0.75):
         """DT: deletion threshold"""
         # vertex_list: list of vertex with the order of addition
@@ -34,9 +30,10 @@ class CG1:
         self.x_max = x_max  # initial x location of the graph
         self.chunks = {}  # a dictonary with chunk keys and chunk tuples
         self.variables = {}  # variable with their variable object
-        self.concrete_chunks = []  # no entailment
+        self.variablekeys = {} # used for checking variable duplicates
+        self.concrete_chunks = {}  # no entailment
         self.ancestors = []  # list of chunks without parents
-        self.latest_descendents = []
+        self.latest_descendents = [] # chunks without children
         self.theta = theta  # forgetting rate
         self.deletion_threshold = DT
         self.H = 1  # default
@@ -52,6 +49,8 @@ class CG1:
             N = N + self.chunks[i].count
         return N
 
+
+
     def get_N_transition(self, dt=None):
         """returns the number of parsed observations"""
         assert len(self.chunks) > 0
@@ -59,15 +58,17 @@ class CG1:
         if dt == None:
             N_transition = 0
             for chunk in self.chunks:
-                for dt in self.chunks[chunk].adjacency:
-                    N_transition = N_transition + sum(self.chunks[chunk].adjacency[dt].values())
+                for ck in self.chunks[chunk].adjacency:
+                    N_transition = N_transition + sum(self.chunks[chunk].adjacency[ck].values())
 
             return N_transition
         else:
             N_transition = 0
             for chunk in self.chunks:
-                if dt in self.chunks[chunk].adjacency:
-                    N_transition = N_transition + self.chunks[chunk].adjacency[dt].values()
+                for ck in self.chunks[chunk].adjacency:
+                    if dt in self.chunks[chunk].adjacency[ck]:
+                        N_transition = N_transition + self.chunks[chunk].adjacency[ck][dt]
+
             return N_transition
 
     def empty_counts(self):
@@ -75,6 +76,10 @@ class CG1:
         for ck in self.chunks.values():
             ck.count = 0
             ck.empty_counts()
+        for v in self.variables:
+            var = self.variables[v]
+            var.count = 0
+            var.empty_counts()
         return
 
     def extrapolate_variable(self, chunk):
@@ -104,8 +109,11 @@ class CG1:
     #         abstraction_learning(ancestors.cr)
 
     def hypothesis_test(self, clidx, cridx, dt):
-        cl = self.chunks[clidx]
-        cr = self.chunks[cridx]
+        if clidx in self.chunks:cl = self.chunks[clidx]
+        else: cl = self.variables[clidx]
+        if cridx in self.chunks:cr = self.chunks[cridx]
+        else: cr = self.variables[cridx]
+
         assert len(cl.adjacency) > 0
         assert dt in list(cl.adjacency[cridx].keys())
         N = self.get_N()
@@ -132,7 +140,7 @@ class CG1:
                             if self.chunks[ncridx] != cr:
                                 op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
 
-        if op0p0 <= N_min or op1p0 <= N_min or op1p1 <= N_min or op0p1 <= N_min:
+        if op0p0 <= N_min and op1p0 <= N_min and op1p1 <= N_min and op0p1 <= N_min:
             return True
         else:
             _, pvalue = stats.chisquare([op1p1, op1p0, op0p1, op0p0], f_exp=[ep1p1, ep1p0, ep0p1, ep0p0], ddof=1)
@@ -166,9 +174,6 @@ class CG1:
         self.H = H
         self.W = W
         return
-
-    def get_M(self):
-        return self.M
 
     def get_nonzeroM(self):
         nzm = list(self.M.keys()).copy()
@@ -245,42 +250,12 @@ class CG1:
         if key in dictionary:
             dictionary[key] = dictionary[key] + 1
         else:
-            dictionary[key] = 1
+            dictionary[key] = 0
         return dictionary
-
-    # update graph configuration
-    def add_chunk(self, newc, leftkey=None, rightkey=None):
-        self.vertex_list.append(newc.key)
-        self.chunks[newc.key] = newc  # add observation
-        newc.H = self.H  # initialize height and weight in chunk
-        newc.W = self.W
-        # compute the x and y location of the chunk based on pre-existing
-        # graph configuration, when this chunk first emerges
-        if leftkey is None and rightkey is None:
-            x_new_c = self.x_max + 1
-            y_new_c = self.y0
-            self.x_max = x_new_c
-            newc.vertex_location = [x_new_c, y_new_c]
-        else:
-            leftparent = self.chunks[leftkey]
-            rightparent = self.chunks[rightkey]
-            l_x, l_y = leftparent.vertex_location
-            r_x, r_y = rightparent.vertex_location#[rightkey]
-            x_c = (l_x + r_x) * 0.5
-            y_c = self.y0
-            self.vertex_location = [x_c, y_c]
-            self.y0 = self.y0 + 1
-
-            leftparent.cl = self.check_and_add_to_dict(leftparent.cl, newc)
-            rightparent.cr = self.check_and_add_to_dict(rightparent.cr, newc)
-            newc.acl = self.check_and_add_to_dict(newc.acl, leftparent)
-            newc.acr = self.check_and_add_to_dict(newc.acr, rightparent)
-
-        return
 
     def independence_test(self):
         """Evaluate the independence as a stopping criteria for the model"""
-
+        pass
         return False
 
     def relational_graph_refactorization(self, newc):
@@ -335,6 +310,51 @@ class CG1:
         else:
             return None
 
+    # update graph configuration
+    def add_chunk(self, newc, ancestor = False, leftkey=None, rightkey=None):
+        if ancestor:
+            self.ancestors.append(newc)  # point from content to chunk
+
+        self.vertex_list.append(self.make_hash(newc.ordered_content))
+        self.chunks[newc.key] = newc  # add observation
+
+        if len(newc.variables) == 0:  # record concrete chunks and variables separately
+            self.concrete_chunks[newc.key] = newc
+        else:
+            for varc in newc.variables:
+                self.variables[varc.key] = varc
+                self.variablekeys[varc.entailingchunknames] = varc
+                varc.chunks[newc.key] = newc
+
+        newc.H = self.H  # initialize height and weight in chunk
+        newc.W = self.W
+        # compute the x and y location of the chunk based on pre-existing
+        # graph configuration, when this chunk first emerges
+        if leftkey is None and rightkey is None:
+            x_new_c = self.x_max + 1
+            y_new_c = self.y0
+            self.x_max = x_new_c
+            newc.vertex_location = [x_new_c, y_new_c]
+        else:
+            if leftkey in self.chunks:leftparent = self.chunks[leftkey]
+            else: leftparent = self.variables[leftkey]
+            if rightkey in self.chunks:rightparent = self.chunks[rightkey]
+            else: rightparent = self.variables[rightkey]
+            l_x, l_y = leftparent.vertex_location
+            r_x, r_y = rightparent.vertex_location  # [rightkey]
+
+            x_c = (l_x + r_x) * 0.5
+            y_c = self.y0
+            newc.vertex_location = [x_c, y_c]
+            self.y0 = self.y0 + 1
+
+            leftparent.cl = self.check_and_add_to_dict(leftparent.cl, newc)
+            rightparent.cr = self.check_and_add_to_dict(rightparent.cr, newc)
+            newc.acl = self.check_and_add_to_dict(newc.acl, leftparent)
+            newc.acr = self.check_and_add_to_dict(newc.acr, rightparent)
+
+        return
+
     def add_chunk_to_cg_class(self, chunkcontent):
         """chunk: nparray converted to tuple format
         Every time when a new chunk is identified, this function should be called """
@@ -364,25 +384,40 @@ class CG1:
 
         return
 
-    def checkcontentoverlap(self, content):
-        '''check of the content is already contained in one of the chunks'''
-        if content in self.chunks:
-            return self.chunks[content]
-        else:
-            return None
+
+    def checkcontentoverlap(self, chunk):
+        '''check if the content is already contained in one of the chunks'''
+        try:
+            if chunk.variables ==[]:
+                if chunk.key in self.chunks:
+                    return self.chunks[chunk.key]
+                else:
+                    return None
+            else: # this chunk does contain variable component:
+                hashed_content = self.make_hash(chunk.ordered_content)
+                if hashed_content in self.chunks:
+                    return self.chunks[hashed_content]
+        except(AttributeError):
+            print('')
+
+            
+
 
     def chunking_reorganization(self, prevkey, currentkey, cat, dt):
+        '''dt: end_prev(inclusive) - start_post(exclusive)'''
         def findancestors(c, L):
+            '''Find all ancestors of c'''
             if len(c.acl) == 0:
                 return
             else:
                 L = L + list(c.acl.keys())
                 for i in list(c.acl.keys()):
                     findancestors(i, L)
-
-        prev = self.chunks[prevkey]
-        current = self.chunks[currentkey]
-        chunk = self.checkcontentoverlap(cat.key)
+        if prevkey in self.chunks: prev = self.chunks[prevkey]
+        else: prev = self.variables[prevkey]
+        if currentkey in self.chunks: current = self.chunks[currentkey]
+        else: current = self.variables[currentkey]
+        chunk = self.checkcontentoverlap(cat)
         if chunk is None:  # add concatinated chunk to the network
             # TODO： add chunk to vertex
             self.add_chunk(cat, leftkey=prevkey, rightkey=currentkey)
@@ -392,7 +427,6 @@ class CG1:
             current.count = current.count - cat.count
             prev.adjacency[current.key][dt] = 0
 
-
             cat.adjacency = copy.deepcopy(current.adjacency)
             # check other pathways that arrive at the same chunk based on cat's ancestor
             candidate_cls = []
@@ -401,7 +435,7 @@ class CG1:
                 for _cr in ck.adjacency:
                     for _dt in ck[_cr]:
                         if _cr != currentkey and ck.key != prevkey and _dt != dt:
-                            _cat = combinechunks(ck.key, _cr, _dt, self)
+                            _cat = combinechunks(ck.key, _cr, _dt)
                             if _cat != None:
                                 if _cat == cat:
                                     # TODO: may need to merge nested dictionary
@@ -449,47 +483,102 @@ class CG1:
         # (content of intersection, their associated chunks) ranked by the applicability threshold
         # alternatively, the most applicable intersection:
         max_intersect = None
-        max_intersect_count = 0
+        max_intersect_count = 0 #
         max_intersect_chunks = []  # chunks that needs to be merged
         for ck in self.chunks:
-            intersect = ck.content.intersection(cat.content)
-            intersect_chunks = []
-            c = 0  # how often this intersection is applicable across chunks
-            if len(intersect) != len(cat.content) and len(intersect) > v:  # not the same chunk
-                # look for overlap between this intersection and other chunks:
-                for ck_ in self.chunks:  # how applicable is this intersection, to other previously learned chunks
-                    if ck_.content.intersection(intersect) == len(intersect):
-                        c = c + 1
-                        intersect_chunks.append(ck_)
-            if c > max_intersect_count and c >= app_t:
-                # atm. select intersect with the max intersect count
-                # TODO: can be ranked based on merging gain
-                max_intersect_count = c
-                max_intersect_chunks = intersect_chunks
-                max_intersect = intersect
+            if ck.variables==[] and cat.variables == []:
+                intersect = ck.content.intersection(cat.content)
+                intersect_chunks = []
+                c = 0  # how often this intersection is applicable across chunks
+                if len(intersect) != len(cat.content) and len(intersect) > v:  # not the same chunk
+                    # look for overlap between this intersection and other chunks:
+                    for ck_ in self.chunks:  # how applicable is this intersection, to other previously learned chunks
+                        if ck_.content.intersection(intersect) == intersect:
+                            c = c + ck_.count
+                            intersect_chunks.append(ck_)
+                if c > max_intersect_count and c >= app_t:
+                    # atm. select intersect with the max intersect count
+                    # TODO: can be ranked based on merging gain
+                    max_intersect_count = c
+                    max_intersect_chunks = intersect_chunks
+                    max_intersect = intersect
+            elif len(ck.variables)>0 and len(cat.variables)>0: # both of the chunks contain variables
+                intersect = LongComSubS(list(ck.ordered_content.items()), list(cat.ordered_content.items()))
+                c = 0  # how often this intersection is applicable across chunks
+                intersect_chunks = [] # a list of string denoting chunk content and variable name
+                # TODO: need to look at ck.ordered_content - intersect, to become variables, I will leave this part for now.
+                if len(intersect) != len(cat.content) and len(intersect) > v:  # not the same chunk
+                    for ck_ in self.chunks:
+                        if LongComSubS(list(ck_.ordered_content.items()), intersect):
+                            c = c + ck_.count
+                            intersect_chunks.append(ck_)
+                if c > max_intersect_count and c >= app_t:
+                    # atm. select intersect with the max intersect count
+                    # TODO: can be ranked based on merging gain
+                    max_intersect_count = c
+                    max_intersect_chunks = intersect_chunks
+                    max_intersect = intersect
+
         if max_intersect != None:  # reorganize chunk list to integrate with variables
             self.merge_chunks(max_intersect, max_intersect_chunks, max_intersect_count)
         return
 
+
+    def LongComSubS(self,st1, st2):
+        '''Longest Common Substring, used to check chunk overlaps'''
+        # TODO: feel like this can be replaced with something smarter
+        maxsize = 0
+        maxsubstr = []
+        for a in range(len(st1)):
+            for b in range(len(st2)):
+                k = 0
+                substr = []
+                while ((a + k) < len(st1) and (b + k) < len(st2) and st1[a + k] == st2[b + k]):
+                    k = k + 1
+                    substr.append(st1[a + k])
+                if k >=maxsize:
+                    maxsize = k
+                    maxsubstr = substr
+        return maxsubstr
+
+
     def merge_chunks(self, max_intersect, max_intersect_chunks, max_intersect_count):
         # create a new chunk with intergrated variables.
-        for ck in max_intersect_chunks:
-            ck.content = ck.content - max_intersect
-        var = Variable(max_intersect_chunks, totalcount=max_intersect_count)
+        # for ck in max_intersect_chunks: # for now, do not touch the content within each chunk, but create a separate abstraction node
+        #     ck.content = ck.content - max_intersect
         self.set_variable_adjacency(var, max_intersect_chunks)
+        if isinstance(max_intersect, set):
+            chk = None  # find if intersection chunk exists in the past
+            if tuple(sorted(self.content)) in self.chunks.keys():
+                chk = self.chunks[tuple(sorted(self.content))]
+            if chk == None:  # add new chunk here
+                chk = Chunk(max_intersect, count=max_intersect_count)
+            else:
+                assert (max_intersect_count > chk.count)
+                chk.count = max_intersect_count
 
-        chk = None  # find if intersection chunk exists in the past
-        for ck in self.chunks:
-            if ck.content.intersection(max_intersect) == len(ck.content):
-                chk = ck
-        if chk == None:  # TODO: add new chunk here
-            chk = Chunk(max_intersect, count=max_intersect_count)
-        else:
-            chk.count = max_intersect_count
+            for ck in max_intersect_chunks: # update graph relation
+                chk.entailment[ck.key] = ck
+                ck.abstraction[chk.key] = chk
+        else: # max_intersect is a list
+            chk = None
+            dictionary = {}
+            for i in range(0, len(max_intersect)):
+                dictionary[i] = max_intersect[i]
+            hashed_dictionary = self.make_hash(dictionary)
+            if hashed_dictionary in self.chunks.keys():
+                chk = self.chunks[hashed_dictionary]
 
-        # TODO: add new variable chunk here.
-        chk_var = Chunk([chk, var])  # an agglomeration of chunk with variable is created
+            if chk == None:  # add new chunk here
+                chk = Chunk([], count=max_intersect_count)
+                chk.ordered_content = dictionary
+            else:
+                assert (max_intersect_count > chk.count)
+                chk.count = max_intersect_count
 
+            for ck in max_intersect_chunks: # update graph relation
+                chk.entailment[ck.key] = ck
+                ck.abstraction[chk.key] = chk
         return
 
     def pop_transition_matrix(self, element):
@@ -550,24 +639,68 @@ class CG1:
         return img[1:seql, :, :]
 
     def abstraction_learning(self):
-        """variable construction: chunks that share common ancestors and common descendents."""
-        # check the case for: pre---variable---post, for each dt time: variables with common cause and common effect
-        # TODO: another version wtih more flexible dt
-        T = 3
-        for chunk in self.latest_descendents:
-            dts = chunk.adjacency.keys()
-            for dt in dts:
-                entailing_chunks = chunk.adjacency[dt].keys()
-                for postchunk in self.latest_descendents:
-                    for dts1 in postchunk.preadjacency.keys():
-                        chunks_post = postchunk.adjacency[dts1].keys()
-                        candidate_variable_entailment = chunks_post.intersect(entailing_chunks)
-                        if len(candidate_variable_entailment) > T: # register a variable
-                            v = Variable(entailingchunks=candidate_variable_entailment)
-                            self.variables[v.key] = v
-                            for ck in candidate_variable_entailment:
-                                ck.variable[v.key] = v
-                                v.count = v.count + ck.count
-                            # TODO: implement variable binding as new chunk here, test variable independence
+        """
+        Create variables from adjacency matrix.
+        variable construction: chunks that share common ancestors and common descendents.
+        pre---variable---post, for each dt time: variables with common cause and common effect
+        """
+        # TODO: another version with more flexible dt
+        varchunks_to_add = []
+        T = 1
+        for chunk in self.chunks.values(): #latestdescendents
+            v_horizontal_ = set(chunk.adjacency.keys())
+            # TODO: need to consider different times in the future
+            for postchunk in self.chunks.values():# latestdescedents
+                v_vertical_ = set(postchunk.preadjacency.keys())
+                candidate_variable_entailment = v_horizontal_.intersection(v_vertical_)
+                if len(candidate_variable_entailment) > T: #register a variable
+                    candidate_variables = {self.chunks[candidate] for candidate in candidate_variable_entailment}
+                    v = Variable(candidate_variables, self)
+                    v = self.add_variable(v, candidate_variable_entailment)
+                    # create variable chunk: chunk + var + postchunk
+                    # need to roll it out when chunk itself contains variables.
+                    ordered_content = chunk.ordered_content.copy()
+                    start_t = len(ordered_content)
+                    ordered_content[str(start_t)] = v.key
+                    for strt in postchunk.ordered_content.keys():
+                        ordered_content[str(int(strt) + start_t + 1)] = postchunk.ordered_content[strt]
+                    var_chunk = Chunk(([]), variables = set([v]), ordered_content=ordered_content)
+                    varchunks_to_add.append(var_chunk)
 
+        for var_chunk in varchunks_to_add:
+            self.add_chunk(var_chunk)
         return
+
+    def check_variable_duplicates(self,newv):
+        if newv.entailingchunknames in self.variablekeys:
+            return True # duplicate
+        else:
+            return False
+
+
+    def add_variable(self, v, candidate_variable_entailment):
+        if self.check_variable_duplicates(v) == False:  # check duplicates
+            self.variables[v.key] = v  # update chunking graph
+            self.variablekeys[v.entailingchunknames] = v
+            for ck in candidate_variable_entailment:
+                self.chunks[ck].variables.add(v)
+            return v
+        else:
+            return self.variablekeys[v.entailingchunknames]
+
+
+    def make_hash(self,o):
+      """
+      Makes a hash from a dictionary, list, tuple or set to any level, that contains
+      only other hashable types (including any lists, tuples, sets, and
+      dictionaries).
+      """
+      if isinstance(o, (set, tuple, list)):
+        return tuple([self.make_hash(e) for e in o])
+      elif not isinstance(o, dict):
+        return hash(o)
+      new_o = copy.deepcopy(o)
+      for k, v in new_o.items():
+        new_o[k] = self.make_hash(v)
+
+      return hash(tuple(frozenset(sorted(new_o.items()))))

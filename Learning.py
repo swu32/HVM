@@ -39,7 +39,10 @@ def hcm_rational_v1(arayseq, cg):
     return
 
 
-def parse_sequence(cg, arayseq, seq, seql):
+def parse_sequence(cg, arayseq, seq, seql, candidate_set = set()):
+    ''' candidate_set: a subset of chunks inside cg which is used to parse the sequence, only biggest chunk
+    inside the candidate set can be identified '''
+
     t = 0
     Buffer = buffer(
         t, seq, seql, arayseq.shape[0]
@@ -51,24 +54,24 @@ def parse_sequence(cg, arayseq, seq, seql):
     seq_over = False
     while seq_over == False:
         # identify latest ending chunks
+        if len(candidate_set) < 1:
+            candidate_set = set(cg.chunks.values())
         current_chunks, cg, dt, seq, chunk_record = identify_latest_chunks(
-            cg, seq, chunk_record, Buffer.t
+            cg, seq, chunk_record, Buffer.t, candidate_set
         )  # chunks
+        seq = Buffer.refactor(seq, dt)
 
         cg = learning_and_update(
             current_chunks, chunk_record, cg, Buffer.t, threshold_chunk=False)
         maxchunksize = cg.getmaxchunksize()
-        seq = Buffer.refactor(seq, dt)
         Buffer.reloadsize = maxchunksize + 1
         Buffer.checkreload(arayseq)
         seq_over = Buffer.checkseqover()
-    return cg,chunk_record
+    return cg, chunk_record
 
 
 def hcm_rational(arayseq, cg, maxIter=20):
-    """
-    returns chunking graph based on rational chunk learning
-
+    """ returns chunking graph based on rational chunk learning
             Parameters:
                     arayseq(ndarray): Observational Sequences
                     cg (CG1): Chunking Graph
@@ -83,37 +86,68 @@ def hcm_rational(arayseq, cg, maxIter=20):
     independence = False
     while cg.independence_test() == False and Iter <= maxIter:
         print("============ empty out sequence ========== ")
-        cg, _ = parse_sequence(cg, arayseq, seq, seql)
-        cg = rational_learning(cg, n_update=10) # rationally learn until loss function do not converge
-        cg, chunkrecord = parse_sequence(cg, arayseq, seq, seql)
+        cg.empty_counts()
+        cg, chunkrecord = parse_sequence(cg, arayseq, seq, seql, candidate_set=set(cg.chunks.items()))
+        cg, cp = rational_learning(cg, n_update=10) # rationally learn until loss function do not converge
+        #cg, chunkrecord = parse_sequence(cg, arayseq, seq, seql)
         # print("Average Encoding Length is ER = ", cg.eval_avg_encoding_len())
         seq_over = False
         Iter = Iter + 1
 
     cg.abstraction_learning()
-    cg = rational_learning() # learn chunks with variables
-    cg, chunkrecord = convert_sequence(chunk_record)
+
+    cg, chunkrecord = parse_sequence(cg, arayseq, seq, seql, candidate_set=set(cg.ancestors))
+    cg, chunkrecord = meta_parse_sequence(chunkrecord, cg)
+
+    cg, cp = rational_learning(cg, n_update=10)  # rationally learn until loss function do not converge
 
     cg.abstraction_learning()
-    cg = rational_learning() # learn chunks with variables
-    cg, chunkrecord = convert_sequence(chunk_record)
+    cg.empty_counts()
+    cg, chunkrecord = parse_sequence(cg, arayseq, seq, seql, candidate_set=set(cg.ancestors))
+    cg, chunkrecord = meta_parse_sequence(chunkrecord, cg)
+    cg, cp = rational_learning(cg)# learn chunks with variables
 
+    cg.abstraction_learning()
+    cg, chunkrecord = parse_sequence(cg, arayseq, seq, seql, candidate_set=set(cg.chunks))
+    cg, chunkrecord = meta_parse_sequence(chunkrecord, cg)
 
 
     return cg
 
 
-def convert_sequence(chunk_record):
-    # find the next level of chunks with variables to describe the sequence, based on the level of abstraction in the abstract graph
-    parsed_chunk_record = {}
-    for t, chunk in chunk_record.item():
-        # if chunk.variable is not empty
-        # find the biggest chunk with variable that explains the sequence
-        # update parsed_chunk_record
-        # update transition probabilities
-        pass
+def meta_parse_sequence(chunk_record, cg, selected_chunks=[]):
+    ''' based on chunk_record, search upward (from specific to concrete) in the representation tree to find consistent variables
+    to explain the sequence.
+        Input:
+            selected_chunks: a subset of chunks used to parse the sequence, when empty, the shallowest var
+        each parse gets the shallowest level of variables
 
-    return parsed_chunk_record
+        Can use a while loop to obtain all possible variable representations of the same sequence, the number of chunk
+        record would be the depth of the representation graph.
+        Each while loop would have a transition probability update, and a set of chunks to learn
+
+        Output: a sequence, parsed via the variables that points to the concrete chunks in the chunkrecord
+        '''
+    abstract_chunk_record = chunk_record.copy()
+
+
+    for t, cks in chunk_record.items():
+        abstract_chunk_record[t] = []
+        current_chunks = set()
+        for ck,count in cks:# the second entry is frequency, can ignore for now.
+            thischunk = cg.chunks[ck]
+            if len(thischunk.variables)>0:# then pick which variable?
+                var = np.random.choice(list(thischunk.variables))
+                var.count = var.count + 1
+                abstract_chunk_record[t].append((var.key, var.count))
+            else:
+                abstract_chunk_record[t].append((ck, count))
+
+            current_chunks.add(ck)
+
+        cg = learning_and_update(current_chunks, chunk_record, cg, t, threshold_chunk=True)
+
+    return cg, abstract_chunk_record
 
 
 
@@ -130,7 +164,7 @@ def rational_learning(cg, n_update=10):
     )  # iterate through all chunk pairs and find the chunks with the biggest candidancy
 
 
-    for _previdx,_prevck in cg.chunks.items(): # this iteration will be horribly slow.
+    for _previdx,_prevck in cg.chunks.items() | cg.variables.items(): # this iteration will be horribly slow.
         for _postidx in _prevck.adjacency:
             for _dt in _prevck.adjacency[_postidx].keys():
                 _postck = cg.chunks[_postidx]
@@ -146,9 +180,26 @@ def rational_learning(cg, n_update=10):
                         ]
                     )
 
+    #
+    # for _v in cg.variables.items(): # using _v as the previous chunk
+    #     for _postidx in _v.adjacency:
+    #         for _dt in _v.adjacency[_postidx].keys():
+    #             _postck = cg.chunks[_postidx]
+    #             _cat = combinechunks(_v, _postidx, _dt, cg)
+    #             # hypothesis test
+    #             if (
+    #                 cg.hypothesis_test(_previdx, _postidx, _dt) == False
+    #             ):  # reject null hypothesis
+    #                 candidancy_pairs.append(
+    #                     [
+    #                         (_previdx, _postidx, _cat, _dt),
+    #                         _prevck.adjacency[_postidx][_dt],
+    #                     ]
+    #                 )
+
+
     candidancy_pairs.sort(key=lambda tup: tup[1], reverse=True)
     print(candidancy_pairs)
-
     # number of chunk combinations allowed.
     for i in range(0, min(n_update,len(candidancy_pairs))):
         prev_idx, current_idx, cat, dt = candidancy_pairs[i][0]
@@ -156,7 +207,7 @@ def rational_learning(cg, n_update=10):
 
         if i > len(candidancy_pairs):
             break
-    return cg
+    return cg, candidancy_pairs
 
 
 def learning_and_update(current_chunks, chunk_record, cg, t, threshold_chunk = True):
@@ -166,36 +217,38 @@ def learning_and_update(current_chunks, chunk_record, cg, t, threshold_chunk = T
     current_chunks_idx: the chunks ending at the current time point
     chunk_record: boundary record of when the previous chunks have ended.
     threshold_chunk: False when the function is used only for parsing and updating transition probabilities.
+    
     TODO: Look backward and around to update transition according to chunk relations. '''
     n_t = 1# 2
     if len(chunk_record)>1:
         for chunk in current_chunks:
-            delta_t = 0 # the difference between the end of the current chunk and the end of the previous chunks
+            d_t = 0 # the difference between the end of the current chunk and the end of the previous chunks
             temporal_length_chunk = cg.chunks[chunk].T
-            while delta_t <= temporal_length_chunk+n_t and len(chunk_record) > 1:# looking backward to find, padding length
+            while d_t <= temporal_length_chunk+n_t and len(chunk_record) > 1:# looking backward to find, padding length
                 # adjacent chunks
-                chunkendtime  = t - delta_t
+                chunkendtime  = t - d_t
                 if chunkendtime in list(chunk_record.keys()):
                     previous_chunks = chunk_record[chunkendtime]
                     # current_chunk_starting_time = t - temporal_length_of_current_chunk + 1  # the "current chunk" starts at:
                     for prev,_ in previous_chunks:
                         samechunk = prev == chunk
-                        if not (samechunk and delta_t==0):
+                        if not (samechunk and d_t==0):
                             if len(cg.chunks[prev].entailment) == 0:# do not check variable chunks
-                                combined_chunk, dt = adjacency(prev, chunk, delta_t, t, cg)
+                                combined_chunk, dt = adjacency(prev, chunk, d_t, t, cg)
                                 if combined_chunk is not None:
                                     # TODO: update variables associated with specific chunks as well
                                     # if the two chunks are adjacent to each other
                                     cg.chunks[prev].update_transition(cg.chunks[chunk], dt)
                                     if threshold_chunk: cg, chunked = threshold_chunking(prev, chunk, combined_chunk, dt, cg)
-                delta_t = delta_t + 1
+                d_t = d_t + 1
     return cg
 
 
 
 
 def threshold_chunking(prev_key, current_key, combined_chunk, dt, cg):
-    """combined_chunk: a new chunk instance"""
+    """combined_chunk: a new chunk instance
+    dt: end_prev(inclusive) - start_post(exclusive)"""
 
     """cg: chunking graph
     learning function manipulates when do the chunk update happen
@@ -242,68 +295,111 @@ def adjacency(prev_key, post_key, time_diff, t, cg):
     # check adjacency should only check chunks with no variables, in other words, concrete chunks,
     # and their ancestors are tagged with this variable relationship
 
-    # time_diff: difference between end of the post chunk and the end of the previous chunk
+    # time_diff: difference between end of the post chunk and the end of the previous chunk (as in chunk record)
     ''' returns empty matrix if not chunkable '''
     # update transitions between chunks with a temporal proximity
     # chunk ends at the point of the end_point_chunk
     # candidate chunk ends at the point of the end_point_candidate_chunk
-
     if prev_key == post_key:
-        return None, -100 # do not chunk a chunk by itself.
+        return None, -100  # do not chunk a chunk by itself.
+    elif cg.chunks[prev_key].conflict(
+        cg.chunks[post_key]
+    ):  # chunks have conflicting content
+        return None, -100
     else:
         prev = cg.chunks[prev_key]
         post = cg.chunks[post_key]
         e_post = t  # inclusive
         e_prev = t - time_diff  # inclusive
-        s_prev = e_prev - prev.T  # inclusive
-        s_post = e_post - post.T  # inclusive
-        if  s_post - s_prev > 0 and ~prev.check_adjacency(post,dt = s_post - s_prev):
-            return None, -100
-        elif s_post - s_prev < 0 and ~post.check_adjacency(prev, dt = s_prev - s_post):
-            return None, -100
-        else:
-            dt = e_prev - s_post
-            # delta_t = e_prev - max(s_post, s_prev)  # the overlapping temporal length between the two chunks
-            # min_s_t = min(s_post, s_prev)  # minimum starting time
-            # max_e_t = max(e_post, e_prev)  # maximal ending time
-            # max_s_t = max(s_post, s_prev)  # latest starting time
-            # min_e_t = min(e_post, e_prev)  # earliest time
-            # t_chunk = max(e_post, e_prev) - min(e_post, e_prev) + delta_t + max(s_post, s_prev) - min(s_post,
-            #                                                                                           s_prev)  # the stretching temporal length of the two chunks
-            # initiate a new chunk.
-            prevcontent = prev.content.copy()
-            postcontent = post.content.copy()
+        s_prev = e_prev - prev.T  # exclusive
+        s_post = e_post - post.T  # exclusive
+        dt = e_prev - s_post
+        delta_t = e_prev - max(
+            s_post, s_prev
+        )  # the overlapping temporal length between the two chunks
+        # initiate a new chunk.
+        prevcontent = prev.content.copy()
+        postcontent = post.content.copy()
 
-            if s_prev > s_post:
-                # shift content in time:
-                prev_shift = s_prev - s_post
-                newprevcontent = set()
-                for msrm in prevcontent:
-                    lmsrm = list(msrm)
-                    lmsrm[0] = lmsrm[0] + prev_shift  # pad the time dimension
-                    newprevcontent.add(tuple(lmsrm))
-                prevcontent = newprevcontent
+        if s_prev > s_post:
+            # shift content in time:
+            prev_shift = s_prev - s_post
+            newprevcontent = set()
+            for msrm in prevcontent:
+                lmsrm = list(msrm)
+                lmsrm[0] = lmsrm[0] + prev_shift  # pad the time dimension
+                newprevcontent.add(tuple(lmsrm))
+            prevcontent = newprevcontent
 
-            prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
-            prevchunk.T = prev.T
-            prevchunk.H = prev.H
-            prevchunk.W = prev.W
+        prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
+        prevchunk.T = prev.T
+        prevchunk.H = prev.H
+        prevchunk.W = prev.W
 
-            if s_prev<s_post:
-                post_shift = s_post - s_prev
-                newpostcontent = set()
-                for msrm in postcontent:
-                    lmsrm = list(msrm)
-                    lmsrm[0] = lmsrm[0] + post_shift
-                    newpostcontent.add(tuple(lmsrm))
-                postcontent = newpostcontent
+        if s_prev < s_post:
+            post_shift = s_post - s_prev
+            newpostcontent = set()
+            for msrm in postcontent:
+                lmsrm = list(msrm)
+                lmsrm[0] = lmsrm[0] + post_shift
+                newpostcontent.add(tuple(lmsrm))
+            postcontent = newpostcontent
 
-            postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
-            postchunk.T = post.T
-            postchunk.H = post.H
-            postchunk.W = post.W
-            concat_chunk = prevchunk.concatinate(postchunk, check = False)
-        return concat_chunk, dt
+        postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
+        postchunk.T = post.T
+        postchunk.H = post.H
+        postchunk.W = post.W
+        concat_chunk = prevchunk.concatinate(postchunk)
+    return concat_chunk, dt
+    #
+    # if prev_key == post_key:
+    #     return None, -100 # do not chunk a chunk by itself.
+    # else:
+    #     prev = cg.chunks[prev_key]
+    #     post = cg.chunks[post_key]
+    #     e_post = t  # inclusive
+    #     e_prev = t - time_diff  # inclusive
+    #     s_prev = e_prev - prev.T  # inclusive
+    #     s_post = e_post - post.T  # inclusive
+    #     if  s_post - s_prev > 0 and ~prev.check_adjacency_approximate(post,dt = s_post - s_prev):
+    #         return None, -100
+    #     elif s_post - s_prev < 0 and ~post.check_adjacency_approximate(prev, dt = s_prev - s_post):
+    #         return None, -100
+    #     else:
+    #         dt = e_prev - s_post
+    #         prevcontent = prev.ordered_content['0'].copy()
+    #         postcontent = post.ordered_content['0'].copy()
+    #
+    #         if s_prev > s_post:
+    #             # shift content in time:
+    #             prev_shift = s_prev - s_post
+    #             newprevcontent = set()
+    #             for msrm in prevcontent:
+    #                 lmsrm = list(msrm)
+    #                 lmsrm[0] = lmsrm[0] + prev_shift  # pad the time dimension
+    #                 newprevcontent.add(tuple(lmsrm))
+    #             prevcontent = newprevcontent
+    #
+    #         prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
+    #         prevchunk.T = prev.T
+    #         prevchunk.H = prev.H
+    #         prevchunk.W = prev.W
+    #
+    #         if s_prev<s_post:
+    #             post_shift = s_post - s_prev
+    #             newpostcontent = set()
+    #             for msrm in postcontent:
+    #                 lmsrm = list(msrm)
+    #                 lmsrm[0] = lmsrm[0] + post_shift
+    #                 newpostcontent.add(tuple(lmsrm))
+    #             postcontent = newpostcontent
+    #
+    #         postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
+    #         postchunk.T = post.T
+    #         postchunk.H = post.H
+    #         postchunk.W = post.W
+    #         concat_chunk = prevchunk.concatinate(postchunk, check = False)
+    #     return concat_chunk, dt
 
 
 def combinechunks(prev_key, post_key, dt, cg):
@@ -312,55 +408,103 @@ def combinechunks(prev_key, post_key, dt, cg):
     # update transitions between chunks with a temporal proximity
     # chunk ends at the point of the end_point_chunk
     # candidate chunk ends at the point of the end_point_candidate_chunk
-    if prev_key == post_key:
-        return None, -100 # do not chunk a chunk by itself.
-    else:
-        # TODO: double check if combine chunks and check adjacency generates the same chunk agglomeration
-        prev = cg.chunks[prev_key]
-        post = cg.chunks[post_key]
-        e_prev = 0
-        adj = False
-        l_t_prev = prev.T
-        l_t_post = post.T
-        s_prev = e_prev - l_t_prev  # the exclusive temporal length
-        s_post = e_prev - dt  # start point is inclusive
-        e_post = s_post + l_t_post
-        # dt = e_prev - s_post
-        delta_t = e_prev - max(s_post, s_prev)# the overlapping temporal length between the two chunks
-        t_chunk = max(e_post, e_prev) - min(e_post, e_prev) + delta_t + max(s_post, s_prev) - min(s_post, s_prev)# the stretching temporal length of the two chunks
-
-        if t_chunk == l_t_prev and t_chunk == l_t_post and checkequal(prev, post):
-            return None# do not chunk a chunk by itself.
+    if prev_key in cg.variables or post_key in cg.variables:
+        Var = set()
+        if prev_key in cg.variables:
+            prev = cg.variables[prev_key]
+            Var.add(prev)
         else:
-            # initiate a new chunk.
-            prevcontent = prev.content.copy()
-            postcontent = post.content.copy()
-            if s_prev > s_post: # post start first
-                # shift content in time:
-                prev_shift = s_prev - s_post
-                newprevcontent = set()
-                for msrm in prevcontent:
-                    lmsrm = list(msrm)
-                    lmsrm[0] = lmsrm[0] + prev_shift  # pad the time dimension
-                    newprevcontent.add(tuple(lmsrm))
-            prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
-            prevchunk.T = prev.T
-            prevchunk.H = prev.H
-            prevchunk.W = prev.W
+            prev = cg.chunks[prev_key]
 
-            if s_prev < s_post: # prev start first
-                post_shift = s_post - s_prev
-                newpostcontent = set()
-                for msrm in postcontent:
-                    lmsrm = list(msrm)
-                    lmsrm[0] = lmsrm[0] + post_shift
-                    newpostcontent.add(tuple(lmsrm))
-                postcontent = newpostcontent
-            postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
-            postchunk.T = post.T
-            postchunk.H = post.H
-            postchunk.W = post.W
-        return prevchunk.concatinate(postchunk)
+        if post_key in cg.variables:
+            post = cg.variables[post_key]
+            Var.add(post)
+        else:
+            post = cg.chunks[post_key]
+        # combine chunks by merging ordered content
+        combinedcontent = {}
+
+        for dt, value in prev.ordered_content.items():
+            combinedcontent[dt] = value
+
+        dT = len(prev.ordered_content)
+        for key, value in post.ordered_content.items():
+            combinedcontent[str(int(key) + int(dT))] = value # shifted content representation
+
+        combinedchunk = Chunk(list([]), variables=Var, ordered_content=combinedcontent)
+        return combinedchunk
+
+    else:
+        if prev_key == post_key:
+            return None, -100 # do not chunk a chunk by itself.
+        else:
+            # TODO: double check if combine chunks and check adjacency generates the same chunk agglomeration
+            prev = cg.chunks[prev_key]
+            post = cg.chunks[post_key]
+            e_prev = 0
+            l_t_prev = prev.T
+            l_t_post = post.T
+            s_prev = e_prev - l_t_prev  # the exclusive temporal length
+            s_post = e_prev - dt  # start point is inclusive
+            e_post = s_post + l_t_post
+            # dt = e_prev - s_post
+            delta_t = e_prev - max(s_post, s_prev)# the overlapping temporal length between the two chunks
+            t_chunk = max(e_post, e_prev) - min(e_post, e_prev) + delta_t + max(s_post, s_prev) - min(s_post, s_prev)# the stretching temporal length of the two chunks
+
+            if t_chunk == l_t_prev and t_chunk == l_t_post and checkequal(prev, post):
+                return None  # do not chunk a chunk by itself.
+            else:
+                # initiate a new chunk.
+                prevcontent = prev.content.copy()
+                postcontent = post.content.copy()
+                if s_prev > s_post:  # post start first
+                    # shift content in time:
+                    prev_shift = s_prev - s_post
+                    newprevcontent = set()
+                    for msrm in prevcontent:
+                        lmsrm = list(msrm)
+                        lmsrm[0] = lmsrm[0] + prev_shift  # pad the time dimension
+                        newprevcontent.add(tuple(lmsrm))
+                prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
+                prevchunk.T = prev.T
+                prevchunk.H = prev.H
+                prevchunk.W = prev.W
+
+                if s_prev < s_post:  # prev start first
+                    post_shift = s_post - s_prev
+                    newpostcontent = set()
+                    for msrm in postcontent:
+                        lmsrm = list(msrm)
+                        lmsrm[0] = lmsrm[0] + post_shift
+                        newpostcontent.add(tuple(lmsrm))
+                    postcontent = newpostcontent
+                postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
+                postchunk.T = post.T
+                postchunk.H = post.H
+                postchunk.W = post.W
+            return prevchunk.concatinate(postchunk)
+
+            # if t_chunk == l_t_prev and t_chunk == l_t_post and checkequal(prev, post):
+            #     return None# do not chunk a chunk by itself.
+            # else:
+            #     prevcontent = prev.content.copy()
+            #     postcontent = post.content.copy()
+            #     prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
+            #     prevchunk.T = prev.T
+            #     prevchunk.H = prev.H
+            #     prevchunk.W = prev.W
+            #     post_shift = dt
+            #     newpostcontent = set()
+            #     for msrm in postcontent:
+            #         lmsrm = list(msrm)
+            #         lmsrm[0] = lmsrm[0] + post_shift
+            #         newpostcontent.add(tuple(lmsrm))
+            #     postcontent = newpostcontent
+            #     postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
+            #     postchunk.T = post.T
+            #     postchunk.H = post.H
+            #     postchunk.W = post.W
+            # return prevchunk.concatinate(postchunk)
 
 def add_singleton_chunk_to_M(seq, t, cg):
     '''Add the singleton chunk observed at the temporal point t of the seq to the set of chunks M'''
@@ -457,10 +601,8 @@ def identify_chunks(cg, seq, termination_time, t, previous_chunk_boundary_record
         return {}, cg, termination_time, previous_chunk_boundary_record
 
 
-def pop_chunk_in_seq_full(chunk, seqc,cg):#_c_
-    chunk = cg.chunks[chunk.key]
-    content = chunk.content
-    for tup in content:# remove chunk content one by one from the sequence
+def pop_chunk_in_seq_full(chunkcontent, seqc, cg):#_c_
+    for tup in chunkcontent: # remove chunk content one by one from the sequence
         seqc.remove(tup) # O(1)
     return seqc
 
@@ -513,15 +655,67 @@ def pop_chunk_in_seq_boundary(chunk_idx, seqc, cg):
     return seqcc
 
 
-def identify_biggest_chunk(cg, seqc, checktype = 'full'):#_c_full
+def timeshift(content, t):
+    shiftedcontent = []
+    for tup in list(content):
+        lp = list(tup)
+        lp[0] = lp[0] + t
+        shiftedcontent.append(tuple(lp))
+    return set(shiftedcontent)
+
+
+def check_recursive_match(seqc, matchingcontent, chunk):
+    '''when called, matching content is initialized to be set()
+        seqc: a copy of the matching sequence
+        '''
+    assert(type(chunk) == Chunk),'matching type must be Chunk'
+    match = False
+    # TODO: iterate through chunk content to check consistency with concrete observation
+    for i, ck in chunk.ordered_content.items():# need to add pre-existing components
+        if type(ck) == set: # concrete chunks
+            content = ck
+            T = sorted(list(matchingcontent))[-1][0] + 1 if len(matchingcontent) > 0 else 0  # maximal finishing time
+            temp = matchingcontent.copy()
+            temp = temp.union(timeshift(content, T))
+            if temp.issubset(seqc):
+                match = True
+                matchingcontent = temp
+            else:
+                return match, matchingcontent
+        else: # variable
+            for vck in ck.entailingchunks: # chunks inside a variable
+                match, matchingcontent = check_recursive_match(seqc, matchingcontent, vck)
+                if match: # no need to check other variables
+                    break
+
+    return match, matchingcontent
+
+
+
+def identify_biggest_chunk(cg, seqc, candidate_set, checktype = 'full'):#_c_full
+    # variables: the set of variable with their corresponding (associated chunk) to parse the sequence
     '''Chunk with a bigger size is priorized to explain the sequence'''
-    # check the occation when the seqc start at above 0, in which case it implies that
-    # there are empty observations in certain time slices.
+    matchingcontent = []
+    t = 0
+    if len(candidate_set) == 0:
+        candidate_set = set(cg.chunks.values())
+
     def findmatch(current, seqc):
+        # asset that at least one chunk in current explains seqc
+        # if chunk contains no variable:
+        # if chunk contains variables;
+            # search for variables that match the sequences
         for chunk in current:  # what if there are multiple chunks that satisfies the relation?
-            if chunk.content.issubset(seqc):
-                return chunk
-        return None
+            if len(chunk.variables) == 0:
+                if chunk.ordered_content['0'].issubset(seqc):
+                    return chunk, chunk.ordered_content['0']
+            else:
+                match, matchingcontent = check_recursive_match(seqc, set(), chunk)
+                if matchingcontent == None:
+                    print('check')
+                if match:
+                    return chunk, matchingcontent
+        return None, None
 
     if checktype == 'full':
         chunkidentification = check_chunk_in_seq
@@ -534,56 +728,68 @@ def identify_biggest_chunk(cg, seqc, checktype = 'full'):#_c_full
         pop_chunk_in_seq = pop_chunk_in_seq_full
     maxsizematch = 0
     maxchunk = None
-    # TODO: dictionary encoding of the overlapping chunk components.
-
+    #current = set(cg.ancestors).intersection(candidate_set)# start parsing from the ancestor sets
+    # current = set([a.content for a in cg.ancestors]).intersection(seqc)# start parsing from the ancestor sets
     current = cg.ancestors
-    while len(current) > 0:
-        c_star = findmatch(current,seqc)
-        if c_star is not None:
-            c_star.parse = c_star.parse + 1
-            current = c_star.cl
-            maxchunk = c_star
-        else:
-            break
+
+    matching_chunks = set() # all chunks that are consistent with the sequence
+    if len(cg.ancestors) == 0:
+        maxchunk = None
+    else:
+        while len(current) > 0: # search until the bottom of the parsing tree from abstract to concrete
+            c_star, c_star_content = findmatch(current, seqc)
+            matching_chunks.add(c_star)
+            if c_star is not None:
+                c_star.parse = c_star.parse + 1 # TODO: make compatible
+                current = c_star.cl
+                maxchunk = c_star
+            else:
+                break
+
 
     # remove chunk from seq
     if maxchunk is None:
         maxchunk, cg = identify_singleton_chunk(cg, seqc)
-        seqc = pop_chunk_in_seq(maxchunk, seqc, cg)  # pop identified chunks in sequence
+        max_chunk_content = maxchunk.ordered_content['0']
+        seqc = pop_chunk_in_seq(max_chunk_content, seqc, cg)  # pop identified chunks in sequence
     else:
-        seqc = pop_chunk_in_seq(maxchunk, seqc, cg)  # pop identified chunks in sequence
+        try:
+            eligible_chunks = list(matching_chunks.intersection(candidate_set))
+            maxchunk = eligible_chunks[-1]
+        except(IndexError):
+            print("")
+        max_chunk_content = maxchunk.ordered_content['0']
+        seqc = pop_chunk_in_seq(max_chunk_content, seqc, cg)  # pop identified chunks in sequence
 
-    return maxchunk, seqc# strange, maxchunk is indeed an instance inside cg, a chunk inside cg
+    return maxchunk, seqc # strange, maxchunk is indeed an instance inside cg, a chunk inside cg
 
 
 def identify_singleton_chunk(cg, seqc):#_c_
     chunkcontent = [seqc[0]]
     chunk = Chunk(chunkcontent, H=cg.H, W=cg.W)
-    cg.add_chunk(chunk)
-    cg.ancestors.append(chunk)# point from content to chunk
+    cg.add_chunk(chunk, ancestor = True)
     return chunk, cg
 
 
 def updatechunk(chunk, explainchunk, chunk_record, cg, t):
-    if chunk.variable==[]:
+    if len(chunk.variables)== 0:
         explainchunk.append((chunk.key, chunk.T))
         cg.chunks[chunk.key].update()  # update chunk count among the currently identified chunks
-        chunk_record = updatechunkrecord(chunk_record, chunk.key, int(chunk.T) + t, cg)
+        chunk_record = updatechunkrecord(chunk_record, chunk.key, int(chunk.T) + t-1, cg)
         return explainchunk, cg, chunk_record
     else:
-        pass
-    # chunk = cg.chunks[max_chunk_idx]
-    # while chunk.abstraction!=[]:
-    #     for ck in chunk.abstraction:
-    #         explainchunk.append(chunk.key, ck.T)
-    #         chunk_record = updatechunkrecord(chunk_record, ck.index, int(cg.chunks[ck.index].T) + t, cg)
-    #         cg.chunks[ck.key].update()  # update chunk count among the currently identified chunks
-    # # trace back to the abstraction chunks
-    return
+        # TODO: need to adapt based on varibles potentially
+        explainchunk.append((chunk.key, chunk.T))
+        cg.chunks[chunk.key].update()  # update chunk count among the currently identified chunks
+        chunk_record = updatechunkrecord(chunk_record, chunk.key, int(chunk.T) + t-1, cg)
+        return explainchunk, cg, chunk_record
 
-def identify_one_chunk(cg, seqc, explainchunk, chunk_record, t): #_c_
-    max_chunk, seqc = identify_biggest_chunk(cg, seqc) # identify and pop chunks in sequence
-    explainchunk, cg, chunk_record = updatechunk(max_chunk, explainchunk, chunk_record, cg,t)
+def identify_one_chunk(cg, seqc, explainchunk, chunk_record, t, candidate_set): #_c_
+    max_chunk, seqc = identify_biggest_chunk(cg, seqc, candidate_set) # identify and pop chunks in sequence
+    try:
+        explainchunk, cg, chunk_record = updatechunk(max_chunk, explainchunk, chunk_record, cg,t)
+    except(TypeError):
+        print('Na Ni? ')
     # explainchunk.append((max_chunk_idx, int(cg.chunks[max_chunk_idx].T), list(cg.visible_chunk_list[max_chunk_idx])))
     # chunk_record = updatechunkrecord(chunk_record, max_chunk_idx, int(cg.chunks[max_chunk_idx].T) + t, cg)
     # cg.chunks[max_chunk_idx].update()  # update chunk count among the currently identified chunks
@@ -659,18 +865,20 @@ def updatechunkrecord(chunk_record, ckidx, endtime,cg, freq = True):
     return chunk_record
 
 
-def identify_latest_chunks(cg, seq, chunk_record, t):
-    ''' use the biggest explainable chunk to parse the sequence and store chunks in the chunkrecord '''
+def identify_latest_chunks(cg, seq, chunk_record, t, candidate_set):
+    ''' use the biggest explainable chunk to parse the sequence and store chunks in the chunkrecord
+        candidate_set: the specified set of variables '''
     def check_obs(s):  # there are observations at the current time point
         if s == []: return True # in the case of empty sequence
         else: return s[0][0] != 0 # nothing happens at the current time point
         # identify biggest chunks that finish at the earliest time point.
+    t = t + 1# the current time (buffer updates after parsing)
     seq_explained = False
     seqc = seq.copy()
     explainchunk = []
     # find candidate chunks explaining the upcoming sequence, out of these candidate chunks, find the ones that
     # terminates at the earliest time point.
-    no_observation = check_obs(seqc)# no observation in this particular time slice
+    no_observation = check_obs(seqc) # no observation in this particular time slice
     if no_observation:
         current_chunks_idx = []
         dt = int(1.0)
@@ -678,8 +886,7 @@ def identify_latest_chunks(cg, seq, chunk_record, t):
         while seq_explained == False:
             # find explanations for the upcoming sequence
             # record termination time of each biggest chunk used for explanation
-            cg, seqc, chunk_record, explainchunk = identify_one_chunk(cg, seqc, explainchunk, chunk_record, t)
-            #cg, seqc, chunk_record, explainchunk = identify_one_chunk_approximate(cg, seqc, explainchunk, chunk_record, t)
+            cg, seqc, chunk_record, explainchunk = identify_one_chunk(cg, seqc, explainchunk, chunk_record, t, candidate_set)
             seq_explained = check_seq_explained(seqc)
         # chunkrecord: {time: [chunkindex]} stores the finishing time (exclusive) of each chunk
         # decide which are current chunks so that time is appropriately updated
@@ -753,43 +960,6 @@ def rational_chunking(prev, current, combined_chunk, cg):
             chunked = True
             cg.chunking_reorganization(prev, current, cat)
     return cg, chunked
-
-
-
-def combine(prev, post, delta_t):
-    # delta t: time difference between the end of previous chunk exceeding the start of current chunk.
-    "Combines a temporally equal or distant two chunks together into one chunk, with the chunk prev preceeding the chunk current"
-    # check what is overlapping between the prev and current chunk, and combine them into an agglomerate entity.
-    t_chunk = temporal_len(prev) + temporal_len(post) - delta_t
-    concat_chunk_prev = np.zeros([t_chunk, D, D])
-    concat_chunk_prev[0:temporal_len(prev), :, :] = prev
-    concat_chunk_post = np.zeros([t_chunk, D, D])
-    concat_chunk_post[t_chunk - temporal_len(post):, :, :] = post
-
-    concat_chunk = np.zeros([t_chunk, D, D])
-    # this concatinated chunk starts at the temporal point where prev starts, and ends at the point when current ends.
-    concat_chunk[0:temporal_len(prev), :, :] = prev
-    concat_chunk[
-        concat_chunk_prev == concat_chunk_post] = 0  # so that the overlapping part is excluded
-    concat_chunk[t_chunk - temporal_len(post):, :, :] = post
-    # it is possible that they cannot be chunked together because they have overlapping parts that are not consistant
-    # with each other, or is this still possible?? probably not.
-    return concat_chunk
-
-
-# to check whether a chunk occurrs in the sequence, check the spatial temporal dimensions of that chunk induces
-# zeros in fitting the template chunks. Especially if they are zero in the dimension specified by the activities of
-# that particular chunk.
-
-def check_chunk_match(sequence_snapshot, chunk):
-    chunk = np.arrray(chunk)
-    '''sequene snapshot: the temporal snapshot of the sequence that matches with the temporal size of the chunk'''
-    diff = sequence_snapshot - chunk
-    # if completely matches the chunk, the difference would be all zero in the location with specified chunk value.
-    # In the unspecfied location of the chunk, the difference would preserve the sequence structure.
-    return np.sum(
-        np.abs(diff[chunk > 0]))  # location where the template matching matters
-    # if returns 0, then there is a complete matching.
 
 
 def arr_to_tuple(arr):
@@ -1190,81 +1360,6 @@ def get_pM_from_partitioned_sequence(chunk, partitioned_sequence, freq = True):
 
 
 
-def partition_seq_hastily(this_sequence, bag_of_chunks, freq = False):
-    """Parse the sequence using the learned set of chunks, use the maximal chunk that fits the upcoming sequence,
-    as described by the rational chunking model in the paper
-    only works for one dimensional chunks"""
-    '''checked'''
-    # find the maximal chunk that fits the sequence
-    # what to do when the bag of chunks does not partition the sequence??
-    i = 0
-    N = 0
-    lsq = this_sequence.shape[0]
-    end_of_sequence = False
-    partitioned_sequence = []
-    true_chunk = None
-    while end_of_sequence == False:
-        N = N + 1
-        mxl = 0
-        mxck = None
-        for chunk in bag_of_chunks:
-            this_chunk: ndarray = tuple_to_arr(chunk)
-            len_this_chunk = this_chunk.shape[0]
-            if i+len_this_chunk<lsq:
-                if np.isclose(this_sequence[i:i+len_this_chunk, :, :], this_chunk).all():
-                    if len_this_chunk>=mxl:
-                        mxl = len_this_chunk
-                        mxck = this_chunk
-        if mxck is None:
-            break
-        partitioned_sequence.append(arr_to_tuple(mxck))
-        i = i + mxl
-        if i >= lsq: end_of_sequence = True
-
-    this_pM, this_pT = eval_pM_pT(bag_of_chunks, partitioned_sequence, freq=freq)
-
-    return this_pM, this_pT, partitioned_sequence, N
-
-
-def evaluate_KL_compared_to_ground_truth(reproduced_sequence, generative_marginals,cg):
-    """compute conditional KL divergence between the reproduced sequence and the groundtruth"""
-    """generative_marginal: marginals used in generating ground truth """
-    """ Epsilon is used here to avoid conditional code for
-    checking that neither P nor Q is equal to 0. """
-    ground_truth_set_of_chunks = set(generative_marginals.keys())
-    for chunk in generative_marginals.keys():
-        cg.M[chunk] = 0
-
-    learned_M, _, _,N = partition_seq_hastily(reproduced_sequence, list(cg.M.keys()))
-    #learned_M = partition_seq_STC(reproduced_sequence, cg) # in this
-
-    # compare the learned M with the generative marginals
-    # Iterate over dictionary keys, and add key values to the np.array to be compared
-    # based on the assumption that the generative marginals should have the same key as the probability ground truth.
-    probability_learned = []
-    probability_ground_truth = []
-    for key in list(learned_M.keys()):
-        probability_learned.append(learned_M[key])
-        probability_ground_truth.append(generative_marginals[key])
-    probability_learned = np.array(probability_learned)
-    probability_ground_truth = np.array(probability_ground_truth)
-    eps = 0.000000001
-    EPS = np.ones(probability_ground_truth.shape)*eps
-    # return divergence
-
-    v_M1 = probability_ground_truth# input, q
-    v_M1 = EPS + v_M1 # take out the protection to see what happens
-    v_M2 = probability_learned # output p
-    v_M2 = EPS + v_M2
-
-    # calculate the kl divergence
-    def kl_divergence(p, q):# usually, p is the output, and q is the input.
-        return sum(p[i] * log2(p[i] / q[i]) for i in range(len(p))) # KL divergence in units of bits.
-
-    #p_log_p_div_q = np.multiply(v_M1,np.log(v_M1/v_M2)) # element wise multiplication
-    KL = kl_divergence(v_M2,v_M1)
-    # div = np.sum(np.matmul(v_M1.transpose(),p_log_p_div_q))
-    return KL
 
 
 
