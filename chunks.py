@@ -14,25 +14,25 @@ class Chunk:
         # TODO: make sure that there is no redundency variable
         ########################### Content and Property ########################
         #self.current_chunk_content() # dynamic value, to become the real content for variable representations
-        if len(variables)==0: self.variables = set()
+        if len(variables)==0: self.variables = {}
         else: self.variables = variables
 
         if ordered_content!=None:
             self.ordered_content = ordered_content
             self.key = ''
-            for i in range(0, len(ordered_content)):
-                eachcontent = ordered_content[str(i)]
+            for item in ordered_content:
+                eachcontent = item
                 if type(eachcontent) == str:
                     self.key = self.key + eachcontent
                 else:
                     self.key = self.key + str(tuple(sorted(eachcontent)))
         else:
-            self.ordered_content = {'0': set(chunkcontent)} #specify the order of chunks and variables
+            self.ordered_content = [set(chunkcontent)] #specify the order of chunks and variables
             self.key = tuple(sorted(chunkcontent))
 
 
         self.content = self.get_content(self.ordered_content)
-        self.volume = sum([len(chunkcontent) for chunkcontent in self.ordered_content.values()])
+        self.volume = sum([len(chunkcontent) for chunkcontent in self.ordered_content])
         #self.T = sum([int(max(np.array(chunkcontent)[:, 0]) + 1) for chunkcontent in self.ordered_content.values()])  # those should be specified when joining a chunking graph
         self.T = 0 if chunkcontent == list([]) else int(max(np.atleast_2d(np.array(list(self.content)))[:, 0]) + 1) # TODO: fix summation problem
         self.H = H
@@ -90,7 +90,7 @@ class Chunk:
     def get_content(self,ordered_content):
         # ordered_content: an ordered list with the
         if len(self.ordered_content)==1:
-            return self.ordered_content['0']
+            return self.ordered_content[0]
         else:
             pass
             # return the variable instantiated content
@@ -110,6 +110,21 @@ class Chunk:
         else:
             for Var in node.variable:
                 self.get_content_recursive(Var, path)
+
+    def get_full_content(self):
+        '''returns a list of all possible content that this chunk can take'''
+        self.possible_path = []
+        self.get_concrete_content(self, [])
+        return self.possible_path
+
+    def get_concrete_content(self):
+        ''' Get chunk with variables specified by chunks '''
+        ordered_content = self.ordered_content.copy() # it is a list
+        for chunk in self.ordered_content:
+            if type(chunk) == str:
+                chunk = self.variables[chunk]
+
+        return ordered_content
 
     def update_variable_count(self):
         for ck in self.abstraction:
@@ -140,29 +155,26 @@ class Chunk:
 
     def get_index(self):
         ''' Get index location of the concrete chunks in chunk content, variable index is not yet integrated '''
-        if len(self.ordered_content['0'])==0:
+        if len(self.ordered_content)==0:
             return set()
         elif len(self.variables) >0:
             return set() # give up when there are variables in the sequence
         else:
             # TODO: integrate with ordered chunkcontent
             index_set = set()
-            rank = []
-            for i in self.ordered_content.keys():
-                if type(self.ordered_content[i]) != str:# exclude variables, for now.
-                    rank.append(eval(i))
 
-            index0 = set(map(tuple, np.atleast_2d(list(self.ordered_content[str(rank[0])]))[:, 0:3]))
+            index0 = set(map(tuple, np.atleast_2d(list(self.ordered_content[0]))[:, 0:3]))
             try:
-                t_shift = int(np.atleast_2d(list(self.ordered_content[str(rank[0])]))[:, 0].max() + 1)  # time shift is the biggest value in the 0th dimension
+                t_shift = int(np.atleast_2d(list(self.ordered_content[0]))[:, 0].max() + 1)  # time shift is the biggest value in the 0th dimension
             except(TypeError):
                 print('')
             index_set.update(index0)
-            for i in range(1, rank[-1]):
-                index = set(map(tuple, np.atleast_2d(list(self.ordered_content[str(i)]))[:, 0:3]))
-                shifted_index = self.timeshift(index, t_shift)
-                index_set.update(shifted_index)
-                t_shift = int(np.atleast_2d(list(self.ordered_content[str(i)]))[:, 0].max() + 1)# time shift is the biggest value in the 0th dimension
+            for item in self.ordered_content[1:]:
+                if type(item)!= str:
+                    index = set(map(tuple, np.atleast_2d(list(item))[:, 0:3]))
+                    shifted_index = self.timeshift(index, t_shift)
+                    index_set.update(shifted_index)
+                    t_shift = int(np.atleast_2d(list(item))[:, 0].max() + 1)# time shift is the biggest value in the 0th dimension
 
             return index_set
 
@@ -225,7 +237,7 @@ class Chunk:
                 return None
 
         else:
-            clcrcontent = self.ordered_content['0'] | cR.ordered_content['0']
+            clcrcontent = self.ordered_content[0] | cR.ordered_content[0]
             clcr = Chunk(list(clcrcontent), H=self.H, W=self.W)
             return clcr
 
@@ -411,7 +423,7 @@ class Chunk:
             else:
                 chunk.preadjacency[self.key][dt] = 1
 
-        for v in self.variables:
+        for v in self.variables.values():
             if dt in v.adjacency[chunk.key].keys():
                 v.adjacency[chunk.key][dt] = v.adjacency[chunk.key][dt] + 1
             else:
@@ -442,11 +454,11 @@ class Variable():
         self.current_content = None # dynamic value, any of the entailing chunks that this variable is taking its value in
         self.entailingchunknames = self.getentailingchunknames(entailingchunks)
         ##################### Relational Parameter ######################
-        self.adjacency = self.get_adjacency(entailingchunks)
-        # should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
+        self.adjacency = self.get_adjacency(entailingchunks)#should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
         self.entailingchunks = entailingchunks
         self.chunks = {} # all chunks that contain this particular variable
-        self.ordered_content = {'0': self.key} #specify the order of chunks and variables
+        self.chunk_probabilities = {}
+        self.ordered_content = [self.key] #specify the order of chunks and variables
         self.vertex_location = self.get_vertex_location(entailingchunks)
 
 
@@ -520,7 +532,7 @@ class Variable():
         chunknames = set()
         for ck in entailingchunks:
             chunknames.add(ck.key)
-        return tuple(sorted(chunknames))
+        return tuple(list(chunknames))
 
 
     def get_N_transition(self, dt):

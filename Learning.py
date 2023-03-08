@@ -671,7 +671,7 @@ def check_recursive_match(seqc, matchingcontent, chunk):
     assert(type(chunk) == Chunk),'matching type must be Chunk'
     match = False
     # TODO: iterate through chunk content to check consistency with concrete observation
-    for i, ck in chunk.ordered_content.items():# need to add pre-existing components
+    for ck in chunk.ordered_content:# need to add pre-existing components
         if type(ck) == set: # concrete chunks
             content = ck
             T = sorted(list(matchingcontent))[-1][0] + 1 if len(matchingcontent) > 0 else 0  # maximal finishing time
@@ -707,8 +707,8 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype = 'full'):#_c_full
             # search for variables that match the sequences
         for chunk in current:  # what if there are multiple chunks that satisfies the relation?
             if len(chunk.variables) == 0:
-                if chunk.ordered_content['0'].issubset(seqc):
-                    return chunk, chunk.ordered_content['0']
+                if chunk.ordered_content[0].issubset(seqc):
+                    return chunk, chunk.ordered_content[0]
             else:
                 match, matchingcontent = check_recursive_match(seqc, set(), chunk)
                 if matchingcontent == None:
@@ -750,7 +750,7 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype = 'full'):#_c_full
     # remove chunk from seq
     if maxchunk is None:
         maxchunk, cg = identify_singleton_chunk(cg, seqc)
-        max_chunk_content = maxchunk.ordered_content['0']
+        max_chunk_content = maxchunk.ordered_content[0]
         seqc = pop_chunk_in_seq(max_chunk_content, seqc, cg)  # pop identified chunks in sequence
     else:
         try:
@@ -758,7 +758,7 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype = 'full'):#_c_full
             maxchunk = eligible_chunks[-1]
         except(IndexError):
             print("")
-        max_chunk_content = maxchunk.ordered_content['0']
+        max_chunk_content = maxchunk.ordered_content[0]
         seqc = pop_chunk_in_seq(max_chunk_content, seqc, cg)  # pop identified chunks in sequence
 
     return maxchunk, seqc # strange, maxchunk is indeed an instance inside cg, a chunk inside cg

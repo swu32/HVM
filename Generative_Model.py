@@ -1,12 +1,13 @@
 import numpy as np
 import random
 from Learning import *
+from CG1 import *
 
 def initialize(d,cg):
     ''' Add atomic chunks to chunking graph '''
     for i in range(1,d+1):
         newchunk = Chunk([(0,0,0,i)])
-        cg.add(newchunk, ancestor = True)
+        cg.add_chunk(newchunk, ancestor=True)
     return cg
 
 def timeshift(content, t):
@@ -17,49 +18,54 @@ def timeshift(content, t):
         shiftedcontent.append(tuple(lp))
     return set(shiftedcontent)
 
-def timeshift(ordered_content, t):
-
 
 def connect_chunks(chunklist):
     ''' connect chunk one after another, and add them to the current chunking graph '''
-    combined_chunk_content = set()
-    new_ordered_content = {}
-
-    dt=0
+    combined_chunk_content = []
+    variables = set()
     for ck in chunklist:
-        combined_chunk_content.union(timeshift(ck.chunkcontent,dt))
-        dt = dt + len(ck.chunkcontent)
+        combined_chunk_content = combined_chunk_content + ck.ordered_content
+        if type(ck)== Variable:
+            variables = variables.union({ck})
+        else:
+            variables = variables.union(ck.variables)
 
-    start_t = len(ordered_content)
-    ordered_content[str(start_t)] = v.key
-    for strt in postchunk.ordered_content.keys():
-        ordered_content[str(int(strt) + start_t + 1)] = postchunk.ordered_content[strt]
-
-    newchunk = Chunk(list(combined_chunk_content))
+    newchunk = Chunk(([]), variables = variables, ordered_content = list(combined_chunk_content))
     return newchunk
 
 
 def test1():
     d = 5
-    RAND = np.random.rand()
     cg = CG1()
     cg = initialize(d,cg)
-    B = cg.chunks# belief set.
 
-    if RAND > 0.5:# create chunks
-        n_combo = np.random.choice([2,3,4,5])
-        samples = random.sample(B, n_combo)
-        newchunk = connect_chunks(samples)
-        cg.add(newchunk)
-    else: # create variables
-        n_combo = np.random.choice([2,3,4,5])
-        samples = random.sample(B,n_combo)
-        newvariable = Variable(samples)
-        cg.add_variable(newvariable, set([item.key for item in samples]))
+    for _ in range(3):
+        RAND = np.random.rand()# create a chunk or a variable with 50% probability
+        if RAND > 0.5:# create chunks
+            B = list(cg.chunks.values()) + list(cg.variables.values()) # belief set.
+            n_combo = np.random.choice([2])
+            samples = random.choices(B, k = n_combo)
+            newchunk = connect_chunks(samples)
+            cg.add_chunk(newchunk)
+        else: # create variables
+            B = list(cg.chunks.values())  # belief set.
+            n_combo = np.random.choice([2])
+            samples = random.choices(B,k = n_combo)
+            newvariable = Variable(samples)
+            cg.add_variable(newvariable, set([item.key for item in samples]))
 
+    cg = assign_probabilities(cg)
     return cg
 
 
+def assign_probabilities(cg):
+    """Assign random probablities for independent chunks in cg in addition to variables within"""
+    ps = dirichlet_flat(len(cg.chunks), sort=False)
+    cg.chunk_probabilities = dict(zip(list(cg.chunks.keys()), ps))
+    for var in cg.variables.values():
+        ps = dirichlet_flat(len(var.chunks), sort=False)
+        var.chunk_probabilities = dict(zip(list(var.chunks.keys()), ps))
+    return cg
 
 
 ''''Generates a hierarchical generative model with depth d'''

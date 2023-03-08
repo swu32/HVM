@@ -29,6 +29,7 @@ class CG1:
         self.y0 = y0  # the initial height of the graph, used for plotting
         self.x_max = x_max  # initial x location of the graph
         self.chunks = {}  # a dictonary with chunk keys and chunk tuples
+        self.chunk_probabilities ={}
         self.variables = {}  # variable with their variable object
         self.variablekeys = {} # used for checking variable duplicates
         self.concrete_chunks = {}  # no entailment
@@ -388,7 +389,7 @@ class CG1:
     def checkcontentoverlap(self, chunk):
         '''check if the content is already contained in one of the chunks'''
         try:
-            if chunk.variables ==[]:
+            if len(chunk.variables) ==0:
                 if chunk.key in self.chunks:
                     return self.chunks[chunk.key]
                 else:
@@ -503,13 +504,13 @@ class CG1:
                     max_intersect_chunks = intersect_chunks
                     max_intersect = intersect
             elif len(ck.variables)>0 and len(cat.variables)>0: # both of the chunks contain variables
-                intersect = LongComSubS(list(ck.ordered_content.items()), list(cat.ordered_content.items()))
+                intersect = LongComSubS(list(ck.ordered_content), list(cat.ordered_content))
                 c = 0  # how often this intersection is applicable across chunks
                 intersect_chunks = [] # a list of string denoting chunk content and variable name
                 # TODO: need to look at ck.ordered_content - intersect, to become variables, I will leave this part for now.
                 if len(intersect) != len(cat.content) and len(intersect) > v:  # not the same chunk
                     for ck_ in self.chunks:
-                        if LongComSubS(list(ck_.ordered_content.items()), intersect):
+                        if LongComSubS(list(ck_.ordered_content), intersect):
                             c = c + ck_.count
                             intersect_chunks.append(ck_)
                 if c > max_intersect_count and c >= app_t:
@@ -660,10 +661,8 @@ class CG1:
                     # create variable chunk: chunk + var + postchunk
                     # need to roll it out when chunk itself contains variables.
                     ordered_content = chunk.ordered_content.copy()
-                    start_t = len(ordered_content)
-                    ordered_content[str(start_t)] = v.key
-                    for strt in postchunk.ordered_content.keys():
-                        ordered_content[str(int(strt) + start_t + 1)] = postchunk.ordered_content[strt]
+                    ordered_content.append(v.key)
+                    ordered_content = ordered_content + postchunk.ordered_content
                     var_chunk = Chunk(([]), variables = set([v]), ordered_content=ordered_content)
                     varchunks_to_add.append(var_chunk)
 
@@ -672,10 +671,13 @@ class CG1:
         return
 
     def check_variable_duplicates(self,newv):
-        if newv.entailingchunknames in self.variablekeys:
-            return True # duplicate
-        else:
-            return False
+        try:
+            if newv.entailingchunknames in set(list(self.variablekeys.keys())):
+                return True # duplicate
+            else:
+                return False
+        except(TypeError):
+            print('')
 
 
     def add_variable(self, v, candidate_variable_entailment):
@@ -683,7 +685,7 @@ class CG1:
             self.variables[v.key] = v  # update chunking graph
             self.variablekeys[v.entailingchunknames] = v
             for ck in candidate_variable_entailment:
-                self.chunks[ck].variables.add(v)
+                self.chunks[ck].variables[v.key] = v
             return v
         else:
             return self.variablekeys[v.entailingchunknames]
