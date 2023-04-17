@@ -83,6 +83,33 @@ class CG1:
             var.empty_counts()
         return
 
+    def get_concrete_content(self, chunk):
+        '''Obtain sampled concrete chunks'''
+        concrete_content = []
+        for ck in chunk.ordered_content:
+            if type(ck) == str:
+                if ck in self.variables:
+                    varchunkcontent = self.variables[ck].current_content # access the assigned values for variables
+                    varchunk = self.chunks[varchunkcontent]#
+                    varchunkcontent = self.get_concrete_content(varchunk)
+                    concrete_content = concrete_content + varchunkcontent
+            else:
+                concrete_content.append(ck)
+        return concrete_content
+
+    def sample_chunk(self, n_sample):
+        '''sample chunk according to the assigned probability'''
+        sampledlist = list(np.random.choice(list(self.chunk_probabilities.keys()), n_sample, p=list(self.chunk_probabilities.values())))
+        return sampledlist
+
+
+    def sample_instances(self):
+        # sample concrete chunks for each learned variable
+        for _,v in self.variables.items():
+            sampleindex = np.random.choice(np.arange(0,len(v.chunk_probabilities),1), 1, p=list(v.chunk_probabilities.values()))[0]
+            v.current_content = list(v.chunk_probabilities.keys())[sampleindex]
+        return
+
     def extrapolate_variable(self, chunk):
         transition = chunk.adjacency
         count = 0
@@ -322,8 +349,8 @@ class CG1:
         if len(newc.variables) == 0:  # record concrete chunks and variables separately
             self.concrete_chunks[newc.key] = newc
         else:
-            for varc in newc.variables:
-                self.variables[varc.key] = varc
+            for varkey, varc in newc.variables.items():
+                self.variables[varkey] = varc
                 self.variablekeys[varc.entailingchunknames] = varc
                 varc.chunks[newc.key] = newc
 
@@ -426,9 +453,13 @@ class CG1:
             cat.count = prev.adjacency[currentkey][dt]  # need to add estimates of how frequent the joint frequency occurred
             prev.count = prev.count - cat.count  # reduce one sample observation from the previous chunk
             current.count = current.count - cat.count
-            prev.adjacency[current.key][dt] = 0
 
-            cat.adjacency = copy.deepcopy(current.adjacency)
+            # empty out adjacency and preadjacency transitions
+            prev.adjacency[current.key][dt] = 0
+            current.preadjacency[prev.key][dt] = 0
+
+            # cat.adjacency = copy.deepcopy(current.adjacency)
+            # cat.preadjacency = copy.deepcopy(prev.preadjacency)
             # check other pathways that arrive at the same chunk based on cat's ancestor
             candidate_cls = []
             findancestors(cat, candidate_cls)  # look for all ancestoral graph path that arrive at cat
@@ -444,7 +475,9 @@ class CG1:
                                     cat.count = cat.count + _cat_count
                                     ck.count = ck.count - _cat_count
                                     _cr.count = _cr.count - _cat_count
+
                                     ck.adjacency[_cr][_dt] = 0
+                                    _cr.preadjacency[ck][_dt] = 0
 
                                     leftparent = self.chunks[ck.key]
                                     rightparent = self.chunks[_cr]
@@ -457,7 +490,7 @@ class CG1:
             prev.count = prev.count - cat.count  # reduce one sample observation from the previous chunk
             current.count = current.count - cat.count
             prev.adjacency[current.key][dt] = 0
-
+            current.preadjacency[prev.key][dt] = 0
         return
 
     def evaluate_merging_gain(self, intersect, intersect_chunks):
@@ -654,7 +687,11 @@ class CG1:
             for postchunk in self.chunks.values():# latestdescedents
                 v_vertical_ = set(postchunk.preadjacency.keys())
                 candidate_variable_entailment = v_horizontal_.intersection(v_vertical_)
-                if len(candidate_variable_entailment) > T: #register a variable
+
+                freq_c = 0
+                for c in candidate_variable_entailment:
+                    freq_c = freq_c + chunk.adjacency[c][0]
+                if len(candidate_variable_entailment) > T and freq_c > 20: #register a variable
                     candidate_variables = {self.chunks[candidate] for candidate in candidate_variable_entailment}
                     v = Variable(candidate_variables, self)
                     v = self.add_variable(v, candidate_variable_entailment)
@@ -663,7 +700,9 @@ class CG1:
                     ordered_content = chunk.ordered_content.copy()
                     ordered_content.append(v.key)
                     ordered_content = ordered_content + postchunk.ordered_content
-                    var_chunk = Chunk(([]), variables = set([v]), ordered_content=ordered_content)
+                    V = {}
+                    V[v.key] = v
+                    var_chunk = Chunk(([]), variables = V, ordered_content=ordered_content)
                     varchunks_to_add.append(var_chunk)
 
         for var_chunk in varchunks_to_add:

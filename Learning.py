@@ -6,6 +6,8 @@ from scipy.stats import chisquare
 from math import log2
 from chunks import *
 from buffer import *
+from test_Learning import *
+
 def hcm_rational_v1(arayseq, cg):
     seql, H, W = arayseq.shape
     cg.update_hw(H, W)
@@ -52,6 +54,7 @@ def parse_sequence(cg, arayseq, seq, seql, candidate_set = set()):
     maxchunksize = cg.getmaxchunksize()
     chunk_record = {}  # chunk ending time, and which chunk is it.
     seq_over = False
+    i = 0# seqeunce items, for debugging proposes
     while seq_over == False:
         # identify latest ending chunks
         if len(candidate_set) < 1:
@@ -60,6 +63,7 @@ def parse_sequence(cg, arayseq, seq, seql, candidate_set = set()):
             cg, seq, chunk_record, Buffer.t, candidate_set
         )  # chunks
         seq = Buffer.refactor(seq, dt)
+        i = i + 1
 
         cg = learning_and_update(
             current_chunks, chunk_record, cg, Buffer.t, threshold_chunk=False)
@@ -67,10 +71,11 @@ def parse_sequence(cg, arayseq, seq, seql, candidate_set = set()):
         Buffer.reloadsize = maxchunksize + 1
         Buffer.checkreload(arayseq)
         seq_over = Buffer.checkseqover()
+    print('in total, there are ', i , 'number of items being parsed')
     return cg, chunk_record
 
 
-def hcm_rational(arayseq, cg, maxIter=20):
+def hcm_rational(arayseq, cg, maxIter=2):
     """ returns chunking graph based on rational chunk learning
             Parameters:
                     arayseq(ndarray): Observational Sequences
@@ -79,6 +84,7 @@ def hcm_rational(arayseq, cg, maxIter=20):
             Returns:
                     cg (CG1): Learned Representation from Data
     """
+    # arayseq = arayseq[0:10,:,:]
     seql, H, W = arayseq.shape
     cg.update_hw(H, W)
     seq, seql = convert_sequence(arayseq[0:1, :, :])  # loaded with the 0th observation
@@ -87,12 +93,24 @@ def hcm_rational(arayseq, cg, maxIter=20):
     while cg.independence_test() == False and Iter <= maxIter:
         print("============ empty out sequence ========== ")
         cg.empty_counts()
+        print('test match   -----------------------  ')
+        newtest = Test()
+        newtest.test_adjacency_preadjacency_match(cg)
+        print('end   -----------------------  ')
+
         cg, chunkrecord = parse_sequence(cg, arayseq, seq, seql, candidate_set=set(cg.chunks.items()))
+        print('test match   -----------------------  ')
+        newtest = Test()
+        newtest.test_adjacency_preadjacency_match(cg)
+        print('end   -----------------------  ')
+
         cg, cp = rational_learning(cg, n_update=10) # rationally learn until loss function do not converge
         #cg, chunkrecord = parse_sequence(cg, arayseq, seq, seql)
         # print("Average Encoding Length is ER = ", cg.eval_avg_encoding_len())
         seq_over = False
         Iter = Iter + 1
+
+    cg, chunkrecord = parse_sequence(cg, arayseq, seq, seql, candidate_set=set(cg.ancestors))
 
     cg.abstraction_learning()
 
@@ -197,20 +215,22 @@ def rational_learning(cg, n_update=10):
     #                     ]
     #                 )
 
-
     candidancy_pairs.sort(key=lambda tup: tup[1], reverse=True)
     print(candidancy_pairs)
     # number of chunk combinations allowed.
     for i in range(0, min(n_update,len(candidancy_pairs))):
         prev_idx, current_idx, cat, dt = candidancy_pairs[i][0]
+
         cg.chunking_reorganization(prev_idx, current_idx, cat, dt)
+        newtest = Test()
+        newtest.test_adjacency_preadjacency_match(cg)
 
         if i > len(candidancy_pairs):
             break
     return cg, candidancy_pairs
 
 
-def learning_and_update(current_chunks, chunk_record, cg, t, threshold_chunk = True):
+def learning_and_update(current_chunks, chunk_record, cg, t, threshold_chunk = False):
     '''
     Update transitions and marginals and decide to chunk
     t: finishing parsing at time t
@@ -300,8 +320,8 @@ def adjacency(prev_key, post_key, time_diff, t, cg):
     # update transitions between chunks with a temporal proximity
     # chunk ends at the point of the end_point_chunk
     # candidate chunk ends at the point of the end_point_candidate_chunk
-    if prev_key == post_key:
-        return None, -100  # do not chunk a chunk by itself.
+    if prev_key == post_key and time_diff == 0:# do not chunk a chunk by itself.
+        return None, -100
     elif cg.chunks[prev_key].conflict(
         cg.chunks[post_key]
     ):  # chunks have conflicting content
@@ -435,7 +455,12 @@ def combinechunks(prev_key, post_key, dt, cg):
         return combinedchunk
 
     else:
-        if prev_key == post_key:
+        post = cg.chunks[post_key]
+        e_prev = 0
+        l_t_post = post.T
+        s_post = e_prev - dt  # start point is inclusive
+        e_post = s_post + l_t_post
+        if prev_key == post_key and e_post == e_prev:
             return None, -100 # do not chunk a chunk by itself.
         else:
             # TODO: double check if combine chunks and check adjacency generates the same chunk agglomeration
@@ -757,7 +782,7 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype = 'full'):#_c_full
             eligible_chunks = list(matching_chunks.intersection(candidate_set))
             maxchunk = eligible_chunks[-1]
         except(IndexError):
-            print("")
+            print()
         max_chunk_content = maxchunk.ordered_content[0]
         seqc = pop_chunk_in_seq(max_chunk_content, seqc, cg)  # pop identified chunks in sequence
 
@@ -1118,7 +1143,9 @@ def hcm_learning(arayseq, cg, learn = True):
     while seq_over == False:
         currenttime = time.perf_counter()
         # identify latest ending chunks
-        current_chunks_idx, cg, dt, seq, chunk_record = identify_latest_chunks(cg, seq, chunk_record, Buffer.t)  # chunks
+        candidate_set = set(cg.chunks.values())
+        print(cg, seq, chunk_record, Buffer.t, candidate_set)
+        current_chunks_idx, cg, dt, seq, chunk_record = identify_latest_chunks(cg, seq, chunk_record, Buffer.t, candidate_set)  # chunks
         parsingtime = time.perf_counter() - currenttime
         data['parsing time'].append(parsingtime)
         currenttime = time.perf_counter()

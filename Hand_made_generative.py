@@ -20,8 +20,8 @@ def simple_abstraction_I():
     i = 0
     while i+4 < seql:
         seq[i,:,:] = 2
-        seq[i+1,:,:] = np.random.choice([3,4])
-        seq[i+2,:,:] = np.random.choice([1,5])
+        seq[i+1,:,:] = np.random.choice([3, 4])
+        seq[i+2,:,:] = np.random.choice([1, 5])
         i = i + 4
     return seq
     

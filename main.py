@@ -553,6 +553,18 @@ def simonsays():
 
     return
 
+
+
+def test_random_graph_abstraction():
+    # cggt, seq = random_abstract_representation_graph(save=True)
+
+    with open('random_abstract_sequence.npy', 'rb') as f:
+        seq = np.load(f)
+    cg = CG1(DT=0.1, theta=0.996)
+
+    cg, chunkrecord = hcm_rational(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+    return
+
 def test_simple_abstraction():
     seq = simple_abstraction_I()
     cg = CG1(DT=0.1, theta=0.996)
@@ -586,14 +598,13 @@ def parseDNA():
     return seq
 
 def main():
-
+    test_random_graph_abstraction()
     test_simple_abstraction()
 
 
     pass
 
 if __name__ == "__main__":
-    test1()
 
     main()
 

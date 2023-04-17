@@ -14,8 +14,6 @@ class Chunk:
         # TODO: make sure that there is no redundency variable
         ########################### Content and Property ########################
         #self.current_chunk_content() # dynamic value, to become the real content for variable representations
-        if len(variables)==0: self.variables = {}
-        else: self.variables = variables
 
         if ordered_content!=None:
             self.ordered_content = ordered_content
@@ -30,6 +28,11 @@ class Chunk:
             self.ordered_content = [set(chunkcontent)] #specify the order of chunks and variables
             self.key = tuple(sorted(chunkcontent))
 
+        if len(variables)==0: self.variables = {}
+        else:
+            self.variables = variables
+            for key, var in self.variables.items():
+                var.chunks[self.key] = self
 
         self.content = self.get_content(self.ordered_content)
         self.volume = sum([len(chunkcontent) for chunkcontent in self.ordered_content])
@@ -111,20 +114,6 @@ class Chunk:
             for Var in node.variable:
                 self.get_content_recursive(Var, path)
 
-    def get_full_content(self):
-        '''returns a list of all possible content that this chunk can take'''
-        self.possible_path = []
-        self.get_concrete_content(self, [])
-        return self.possible_path
-
-    def get_concrete_content(self):
-        ''' Get chunk with variables specified by chunks '''
-        ordered_content = self.ordered_content.copy() # it is a list
-        for chunk in self.ordered_content:
-            if type(chunk) == str:
-                chunk = self.variables[chunk]
-
-        return ordered_content
 
     def update_variable_count(self):
         for ck in self.abstraction:
@@ -222,9 +211,12 @@ class Chunk:
         self.count = 0
         self.birth = None  # chunk creation time
         # empty transitional counts
-        for dt in list(self.adjacency.keys()):
-            for chunkidx in list(self.adjacency[dt].keys()):
-                self.adjacency[dt][chunkidx] = 0
+        for chunkidx in list(self.adjacency.keys()):
+            for dt in list(self.adjacency[chunkidx].keys()):
+                self.adjacency[chunkidx][dt] = 0
+        for chunkidx in list(self.preadjacency.keys()):
+            for dt in list(self.preadjacency[chunkidx].keys()):
+                self.preadjacency[chunkidx][dt] = 0
         return
 
     def concatinate(self, cR, check=True):
@@ -418,10 +410,7 @@ class Chunk:
                 chunk.preadjacency[self.key][dt] = 1
         else:
             chunk.preadjacency[self.key] = {}
-            if dt in chunk.preadjacency[self.key].keys():
-                chunk.preadjacency[self.key][dt] = chunk.adjacency[self.key][dt] + 1
-            else:
-                chunk.preadjacency[self.key][dt] = 1
+            chunk.preadjacency[self.key][dt] = 1
 
         for v in self.variables.values():
             if dt in v.adjacency[chunk.key].keys():
@@ -456,7 +445,7 @@ class Variable():
         ##################### Relational Parameter ######################
         self.adjacency = self.get_adjacency(entailingchunks)#should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
         self.entailingchunks = entailingchunks
-        self.chunks = {} # all chunks that contain this particular variable
+        self.chunks = {} # chunks that this variable is a part of
         self.chunk_probabilities = {}
         self.ordered_content = [self.key] #specify the order of chunks and variables
         self.vertex_location = self.get_vertex_location(entailingchunks)
@@ -473,6 +462,13 @@ class Variable():
         self.cr = {}  # right decendent
         self.acl = {} # left ancestor
         self.acr = {} # right ancestor
+
+
+    def sample_current_content(self):
+        '''sample one of the entailing chunks as the current content of the variable'''
+        self.current_content = np.random.choice(list(self.chunk_probabilities.keys()), 1, p = list(self.chunk_probabilities.values()))
+        return
+
 
     def get_count(self, entailingchunks):
         count = 0
@@ -515,17 +511,17 @@ class Variable():
                         adjacency[cr][dt] = chunk.adjacency[cr][dt]
         return adjacency
 
-    def update_transition(self, chunkidx, dt):  # _c_
-        # transition can be chunk or variable
-        if chunkidx in list(self.adjacency.keys()):
-            if dt in list(self.adjacency[chunkidx].keys()):
-                self.adjacency[chunkidx][dt] = self.adjacency[chunkidx][dt] + 1
-            else:
-                self.adjacency[chunkidx][dt] = {}
-                self.adjacency[chunkidx][dt] = 1
-        else:
-            self.adjacency[chunkidx] = {}
-            self.adjacency[chunkidx][dt] = 1
+    # def update_transition(self, chunkidx, dt):  # _c_
+    #     # transition can be chunk or variable
+    #     if chunkidx in list(self.adjacency.keys()):
+    #         if dt in list(self.adjacency[chunkidx].keys()):
+    #             self.adjacency[chunkidx][dt] = self.adjacency[chunkidx][dt] + 1
+    #         else:
+    #             self.adjacency[chunkidx][dt] = {}
+    #             self.adjacency[chunkidx][dt] = 1
+    #     else:
+    #         self.adjacency[chunkidx] = {}
+    #         self.adjacency[chunkidx][dt] = 1
 
     def getentailingchunknames(self, entailingchunks):
         """get the content of the entailing chunks"""
@@ -559,9 +555,12 @@ class Variable():
         self.count = 0
         self.birth = None  # chunk creation time
         # empty transitional counts
-        for dt in list(self.adjacency.keys()):
-            for chunkidx in list(self.adjacency[dt].keys()):
-                self.adjacency[dt][chunkidx] = 0
+        for chunkidx in list(self.adjacency.keys()):
+            for dt in list(self.adjacency[chunkidx].keys()):
+                self.adjacency[chunkidx][dt] = 0
+        for chunkidx in list(self.preadjacency.keys()):
+            for dt in list(self.preadjacency[chunkidx].keys()):
+                self.preadjacency[chunkidx][dt] = 0
         return
 
 

@@ -22,49 +22,84 @@ def timeshift(content, t):
 def connect_chunks(chunklist):
     ''' connect chunk one after another, and add them to the current chunking graph '''
     combined_chunk_content = []
-    variables = set()
+    variables = {}
     for ck in chunklist:
         combined_chunk_content = combined_chunk_content + ck.ordered_content
         if type(ck)== Variable:
-            variables = variables.union({ck})
+            variables = variables | {ck.key: ck}
         else:
-            variables = variables.union(ck.variables)
+            variables = variables | ck.variables
 
     newchunk = Chunk(([]), variables = variables, ordered_content = list(combined_chunk_content))
     return newchunk
 
 
-def test1():
+def random_abstract_representation_graph(save = True):
+    ''' Generate a random abstract representation graph '''
     d = 5
     cg = CG1()
     cg = initialize(d,cg)
 
-    for _ in range(3):
+    for _ in range(10):
         RAND = np.random.rand()# create a chunk or a variable with 50% probability
         if RAND > 0.5:# create chunks
-            B = list(cg.chunks.values()) + list(cg.variables.values()) # belief set.
-            n_combo = np.random.choice([2])
+            B = list(cg.chunks.values()) + list(cg.variables.values())# belief set.
+            n_combo = np.random.choice([3,4])
             samples = random.choices(B, k = n_combo)
+            while type(samples[0])!=Chunk or type(samples[-1])!=Chunk:
+                samples = random.choices(B, k=n_combo)
+
             newchunk = connect_chunks(samples)
             cg.add_chunk(newchunk)
         else: # create variables
             B = list(cg.chunks.values())  # belief set.
-            n_combo = np.random.choice([2])
-            samples = random.choices(B,k = n_combo)
+            n_combo = np.random.choice([2,3,4])
+            samples = random.choices(B, k=n_combo)
+            while len(set(samples))<=1:
+                samples = random.choices(B, k=n_combo)
+
             newvariable = Variable(samples)
             cg.add_variable(newvariable, set([item.key for item in samples]))
+        print('check')
 
     cg = assign_probabilities(cg)
-    return cg
+    cg.sample_instances()
+    sampled_seq = cg.sample_chunk(100)
+    seq = convert_chunklist_to_seq(sampled_seq, cg)
+    if save:
+        with open('random_abstract_sequence.npy', 'wb') as f:
+            np.save(f, seq)
 
+    return cg, seq
+
+def convert_chunklist_to_seq(sampled_seq, cg, sparse = True):
+    '''convert a sequence of sampled chunk to a sequence of observations'''
+
+    content_list = []
+    for key in sampled_seq:
+        chunk = cg.chunks[key]
+        cg.sample_instances() # resample variables in cg again
+        full_content = cg.get_concrete_content(chunk)
+        content_list.append(full_content)
+    seql = 1000
+    seq = np.zeros([seql,1,1])
+    t = 0
+    if sparse: # insert empty spaces between chunks
+        for orderedcontent in content_list:# each is an ordered content
+            for chunk in orderedcontent:# each chunk is a set
+                for element in chunk:
+                    seq[t+element[0], element[1], element[2]] = element[3]
+                t = t + int(max(np.atleast_2d(np.array(list(chunk)))[:, 0]) + 1)
+
+    return seq
 
 def assign_probabilities(cg):
     """Assign random probablities for independent chunks in cg in addition to variables within"""
     ps = dirichlet_flat(len(cg.chunks), sort=False)
     cg.chunk_probabilities = dict(zip(list(cg.chunks.keys()), ps))
     for var in cg.variables.values():
-        ps = dirichlet_flat(len(var.chunks), sort=False)
-        var.chunk_probabilities = dict(zip(list(var.chunks.keys()), ps))
+        ps = dirichlet_flat(len(var.entailingchunknames), sort=False)
+        var.chunk_probabilities = dict(zip(list(var.entailingchunknames), ps))
     return cg
 
 
