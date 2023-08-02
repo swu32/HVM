@@ -241,8 +241,11 @@ class CG1:
                                 if self.chunks[ncridx] != cr:
                                     op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
                             else:
-                                if self.variables[ncridx] != cr:
-                                    op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
+                                try:
+                                    if self.variables[ncridx] != cr:
+                                        op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
+                                except(KeyError):
+                                    print('')
 
         if op0p0 <= N_min and op1p0 <= N_min and op1p1 <= N_min and op0p1 <= N_min:
             return True

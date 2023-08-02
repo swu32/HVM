@@ -557,19 +557,7 @@ def test_random_graph_abstraction():
         seq = np.load(f)
 
     cg = CG1(DT=0.1, theta=0.996)
-
-    #cg, chunkrecord = hcm_rational_curriculum_1(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
     cg = hcm_markov_control(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
-
-    return
-
-
-def test_random_graph_abstraction_1():
-    with open('sample_abstract_sequence.npy', 'rb') as f:
-        seq = np.load(f)
-
-    cg = CG1(DT=0.1, theta=0.996)
-    cg = hcm_markov_control_1(seq, cg)
     return
 
 def test_simple_abstraction():
