@@ -47,24 +47,24 @@ def random_abstract_representation_graph(save = True):
             n_combo = np.random.choice([3,4])
             samples = random.choices(B, k = n_combo)
             while type(samples[0])!=Chunk or type(samples[-1])!=Chunk:
-                samples = random.choices(B, k=n_combo)
+                samples = random.sample(B, k=n_combo)
 
             newchunk = connect_chunks(samples)
             cg.add_chunk(newchunk)
         else: # create variables
             B = list(cg.chunks.values())  # belief set.
+
             n_combo = np.random.choice([2,3,4])
             samples = random.choices(B, k=n_combo)
             while len(set(samples))<=1:
-                samples = random.choices(B, k=n_combo)
-
+                samples = random.sample(B, k=n_combo)
             newvariable = Variable(samples)
             cg.add_variable(newvariable, set([item.key for item in samples]))
         print('check')
 
     cg = assign_probabilities(cg)
-    cg.sample_instances()
-    sampled_seq = cg.sample_chunk(100)
+    # cg.sample_variable_instances()
+    sampled_seq = cg.sample_chunk(800)
     seq = convert_chunklist_to_seq(sampled_seq, cg)
     if save:
         with open('random_abstract_sequence.npy', 'wb') as f:
@@ -78,7 +78,7 @@ def convert_chunklist_to_seq(sampled_seq, cg, sparse = True):
     content_list = []
     for key in sampled_seq:
         chunk = cg.chunks[key]
-        cg.sample_instances() # resample variables in cg again
+        cg.sample_variable_instances() # resample variables in cg again
         full_content = cg.get_concrete_content(chunk)
         content_list.append(full_content)
     seql = 1000
@@ -88,7 +88,8 @@ def convert_chunklist_to_seq(sampled_seq, cg, sparse = True):
         for orderedcontent in content_list:# each is an ordered content
             for chunk in orderedcontent:# each chunk is a set
                 for element in chunk:
-                    seq[t+element[0], element[1], element[2]] = element[3]
+                    if t + element[0]<seql:
+                        seq[t+element[0], element[1], element[2]] = element[3]
                 t = t + int(max(np.atleast_2d(np.array(list(chunk)))[:, 0]) + 1)
 
     return seq

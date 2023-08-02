@@ -10,7 +10,7 @@ import os
 from time import time
 from chunks import *
 from abstraction_test import *
-
+from simonsays import *
 
 def measure_KL():
     '''Measurement of kl divergence across learning progress
@@ -452,13 +452,7 @@ def Wikitext2():
     return
 
 
-def acc_eval1d(img_seq, gt):
-    """ Compare the accuracy between an imaginary sequence and a ground truth sequence """
-    l = 0
-    for i in range(0, img_seq.shape[0]):
-        if img_seq[i,0,0] == gt[i,0,0]:
-            l = l + 1
-    return l/img_seq.shape[0]
+
 
 def simonsaystransfer():
     # for the m1 and m2 subjects, you can characterize the distance from m1 - m2 and from m2 - m1.
@@ -556,13 +550,26 @@ def simonsays():
 
 
 def test_random_graph_abstraction():
-    # cggt, seq = random_abstract_representation_graph(save=True)
-
-    with open('random_abstract_sequence.npy', 'rb') as f:
+    #cggt, seq = random_abstract_representation_graph(save=True)
+    # with open('random_abstract_sequence.npy', 'rb') as f:
+    #     seq = np.load(f)
+    with open('sample_abstract_sequence.npy', 'rb') as f:
         seq = np.load(f)
+
     cg = CG1(DT=0.1, theta=0.996)
 
-    cg, chunkrecord = hcm_rational(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+    #cg, chunkrecord = hcm_rational_curriculum_1(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+    cg = hcm_markov_control(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+
+    return
+
+
+def test_random_graph_abstraction_1():
+    with open('sample_abstract_sequence.npy', 'rb') as f:
+        seq = np.load(f)
+
+    cg = CG1(DT=0.1, theta=0.996)
+    cg = hcm_markov_control_1(seq, cg)
     return
 
 def test_simple_abstraction():
@@ -597,11 +604,38 @@ def parseDNA():
     seq = np.array(seq).reshape([len(seq), 1, 1])
     return seq
 
+def test_motif_learning_experiment2():
+    training_seq, testing_seq = exp2()
+    #training_seq, testing_seq = exp2(control = True)
+
+    cg = CG1(DT=0.1, theta=0.996)
+    for i in range(0,40):
+        proj_seq = training_seq[i]
+        proj_seq = np.array(proj_seq).reshape([-1, 1, 1])
+        cg, chunkrecord = hcm_learning(proj_seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+        recalled_seq, ps = recall(cg, firstitem=proj_seq[0, 0, 0])
+        if len(cg.variables.keys())>1:
+            print()
+        p_seq = np.prod(ps)  # evaluate the probability of a sequence
+        print(p_seq)
+    print('done with training')
+    for i in range(0,24):
+        proj_seq = testing_seq[i]
+        proj_seq = np.array(proj_seq).reshape([-1, 1, 1])
+        cg, chunkrecord = hcm_learning(proj_seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+        recalled_seq, ps = recall(cg, firstitem=proj_seq[0, 0, 0])
+        p_seq = np.prod(ps)  # evaluate the probability of a sequence
+        print(recalled_seq, ps)
+
+    return
+
+
 def main():
+    #seq = abstraction_illustration()
+    #simonsaysex2()
+    #test_motif_learning_experiment2()
     test_random_graph_abstraction()
     test_simple_abstraction()
-
-
     pass
 
 if __name__ == "__main__":

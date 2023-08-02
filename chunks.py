@@ -9,8 +9,15 @@ class Chunk:
         difficult, ideally, each chunk should have its own unique name, (ideally related to how it looks like) """
 
     # A code name unique to each chunk
-    def __init__(self, chunkcontent, variables={}, ordered_content = None, count=0, H=1, W=1, pad=1, entailment = []):
-        """chunkcontent: a list of tuples describing the location and the value of observation"""
+    def __init__(self, chunkcontent, includedvariables={}, ordered_content = None, count=0, H=1, W=1, pad=1):
+        """chunkcontent: a list of tuples describing the location and the value of observation
+            includedvariables: a dictionary of variables that are included in this chunk
+            ordered_content: a list of sets, each set contains the content of a chunk
+            count: the number of times this chunk has been observed
+            H: height of the chunk
+            W: width of the chunk
+            pad: boundary size for nonadjacency detection, set the pad to not 1 to enable this feature.
+            """
         # TODO: make sure that there is no redundency variable
         ########################### Content and Property ########################
         #self.current_chunk_content() # dynamic value, to become the real content for variable representations
@@ -25,16 +32,23 @@ class Chunk:
                 else:
                     self.key = self.key + str(tuple(sorted(eachcontent)))
         else:
-            self.ordered_content = [set(chunkcontent)] #specify the order of chunks and variables
-            self.key = tuple(sorted(chunkcontent))
-
-        if len(variables)==0: self.variables = {}
+            try:
+                self.ordered_content = [set(chunkcontent)] #specify the order of chunks and variables
+                self.key = tuple(sorted(chunkcontent))
+            except(TypeError):
+                print()
+        if len(includedvariables)==0: self.includedvariables = {}
         else:
-            self.variables = variables
-            for key, var in self.variables.items():
-                var.chunks[self.key] = self
-
-        self.content = self.get_content(self.ordered_content)
+            self.includedvariables = includedvariables
+            try:
+                for key, var in self.includedvariables.items():
+                    var.chunks[self.key] = self
+            except(AttributeError):
+                print('set object')
+        try:
+            self.content = self.get_content(self.ordered_content)
+        except(AttributeError):
+            print('')
         self.volume = sum([len(chunkcontent) for chunkcontent in self.ordered_content])
         #self.T = sum([int(max(np.array(chunkcontent)[:, 0]) + 1) for chunkcontent in self.ordered_content.values()])  # those should be specified when joining a chunking graph
         self.T = 0 if chunkcontent == list([]) else int(max(np.atleast_2d(np.array(list(self.content)))[:, 0]) + 1) # TODO: fix summation problem
@@ -44,6 +58,7 @@ class Chunk:
         self.pad = pad  # boundary size for nonadjacency detection, set the pad to not 1 to enable this feature.
         self.count = count  #
         self.birth = None  # chunk creation time
+        self.entropy = 0
 
         ########################### Relational Connection ########################
         self.adjacency = {} # chunk --> something
@@ -52,8 +67,7 @@ class Chunk:
         self.arraycontent = None
         self.boundarycontent = set()
 
-        self.abstraction = []  # what are the variables summarizing this chunk
-        self.entailment = entailment  # concrete chunks that the variable is pointing to
+        self.abstraction = {}  # the variables summarizing this chunk
         self.cl = {}  # left decendent
         self.cr = {}  # right decendent
         self.acl = {} # left ancestor
@@ -85,19 +99,31 @@ class Chunk:
         result_str = ''.join(random.choice(letters) for i in range(length))
         return result_str
 
-    def generate_content(self, seqc):
-        # look for content in itself that matches the sequence
-        # for i in self.ordered_content:
-        pass
 
-    def get_content(self,ordered_content):
-        # ordered_content: an ordered list with the
+    def get_content(self,ignore_variable = True):
+        # returns a set with content and their specified locations
         if len(self.ordered_content)==1:
             return self.ordered_content[0]
         else:
-            pass
-            # return the variable instantiated content
-            return
+            if ignore_variable:
+                return
+            else:
+                # return the variable instantiated content
+                content_set = set()
+                tshift = 0
+                for content in self.ordered_content:
+                    maxdt = 0
+                    for signal in content:
+                        if signal[0] >= maxdt:
+                            maxdt = signal[0]
+
+                        tshiftsignal = list(signal).copy()
+                        tshiftsignal[0] = tshiftsignal[0] + tshift
+                        content_set.add(tuple(tshiftsignal))
+
+                    tshift = tshift + maxdt + 1
+                return content_set
+
 
     def get_full_content(self):
         '''returns a list of all possible content that this chunk can take'''
@@ -106,24 +132,33 @@ class Chunk:
         return self.possible_path
 
     def get_content_recursive(self, node, path):
-        path = path + list(node.content)
-        if len(list(node.variable)) == 0:
+        '''This function does not fully work'''
+        if node.content!=None:
+            path = path + list(node.content)
+        if len(list(node.includedvariables)) == 0:
             self.possible_path.append(path)
             return
         else:
-            for Var in node.variable:
+            for Var in node.includedvariables:
                 self.get_content_recursive(Var, path)
 
 
     def update_variable_count(self):
-        for ck in self.abstraction:
-            ck.update()
+        for var in list(self.abstraction.values()):
+            var.update()
         return
 
     def update(self):
         self.count = self.count + 1
+
+        # update the count of the abstracted variables
         if len(self.abstraction) > 0:
-            self.update_variable_count()  # update the count of the subordinate chunks
+            self.update_variable_count()
+
+        # update the identification frequency of the included variables
+        for k, v in self.includedvariables.items():
+            v.identificationfreq += 1
+
         return
 
     def to_array(self):
@@ -146,7 +181,7 @@ class Chunk:
         ''' Get index location of the concrete chunks in chunk content, variable index is not yet integrated '''
         if len(self.ordered_content)==0:
             return set()
-        elif len(self.variables) >0:
+        elif len(self.includedvariables) >0:
             return set() # give up when there are variables in the sequence
         else:
             # TODO: integrate with ordered chunkcontent
@@ -229,11 +264,15 @@ class Chunk:
                 return None
 
         else:
-            clcrcontent = self.ordered_content[0] | cR.ordered_content[0]
-            clcr = Chunk(list(clcrcontent), H=self.H, W=self.W)
-            return clcr
+            if len(self.ordered_content) == 1 and len(cR.ordered_content) == 1:
+                clcrcontent = self.ordered_content[0] | cR.ordered_content[0]
+                clcr = Chunk(list(clcrcontent), H=self.H, W=self.W)
+                return clcr
+            else:
+                clcrcontent = self.ordered_content + cR.ordered_content
+                clcr = Chunk([], ordered_content=clcrcontent, H=self.H, W=self.W)
+                return clcr
 
-            # concatinate cL with cR:
 
     def average_content(self):
         # average the stored content with the sequence
@@ -271,14 +310,13 @@ class Chunk:
     def variable_check_match(self, seq):  # a sequence matches any of its instantiated variables
         '''returns true if the sequence matches any of the variable instantiaions
         TODO: test this function with variables '''
-        if len(self.variable) == 0:
+        if len(self.includedvariables) == 0:
             return self.check_match(seq)
         else:
             match = []
-            for ck in self.variable:
+            for ck in self.includedvariables:
                 match.append(ck.variable_check_match(seq))
             return any(match)
-        
         
 
     def check_match(self, seq):
@@ -391,32 +429,61 @@ class Chunk:
                     x1[2] - x2[2]) * (x1[2] - x2[2]) + self.v * (x1[0] - x2[0]) * (x1[0] - x2[0])
         return D
 
-    def update_transition(self, chunk, dt):
+    def update_transition(self, chunk, dt, variable_adjacency_update = True):
         '''Update adjacency matrix connecting self to adjacent chunks with time distance dt
         Also update the adjacenc matrix of variables '''
-        if chunk.key in self.adjacency.keys():
-            if dt in self.adjacency[chunk.key].keys():
-                self.adjacency[chunk.key][dt] = self.adjacency[chunk.key][dt] + 1
-            else:
-                self.adjacency[chunk.key][dt] = 1
-        else:
-            self.adjacency[chunk.key] = {}
-            self.adjacency[chunk.key][dt] = 1
+        # if chunk.key in self.adjacency.keys():
+        #     if dt in self.adjacency[chunk.key].keys():
+        #         self.adjacency[chunk.key][dt] = self.adjacency[chunk.key][dt] + 1
+        #     else:
+        #         self.adjacency[chunk.key][dt] = 1
+        # else:
+        #     self.adjacency[chunk.key] = {}
+        #     self.adjacency[chunk.key][dt] = 1
 
-        if self.key in list(chunk.preadjacency.keys()): # preadjacency: something --> chunkidx
-            if dt in list(chunk.preadjacency[self.key].keys()):
-                chunk.preadjacency[self.key][dt] = chunk.preadjacency[self.key][dt] + 1
-            else:
-                chunk.preadjacency[self.key][dt] = 1
-        else:
-            chunk.preadjacency[self.key] = {}
-            chunk.preadjacency[self.key][dt] = 1
+        self.adjacency.setdefault(chunk.key, {}).setdefault(dt, 1)
+        self.adjacency[chunk.key][dt] += 1
 
-        for v in self.variables.values():
-            if dt in v.adjacency[chunk.key].keys():
-                v.adjacency[chunk.key][dt] = v.adjacency[chunk.key][dt] + 1
-            else:
-                v.adjacency[chunk.key][dt] = 1
+        # if self.key in list(chunk.preadjacency.keys()): # preadjacency: something --> chunkidx
+        #     if dt in list(chunk.preadjacency[self.key].keys()):
+        #         chunk.preadjacency[self.key][dt] = chunk.preadjacency[self.key][dt] + 1
+        #     else:
+        #         chunk.preadjacency[self.key][dt] = 1
+        # else:
+        #     chunk.preadjacency[self.key] = {}
+        #     chunk.preadjacency[self.key][dt] = 1
+        chunk.preadjacency.setdefault(self.key, {}).setdefault(dt, 1)
+        chunk.preadjacency[self.key][dt] += 1
+
+        if variable_adjacency_update:
+            #######   update the transition between self, chunk, and their associated variables ########
+
+            #   v   ---> v_c
+            #  self ---> chunk
+            for v in self.abstraction.values(): # update the transition for the parent variables of the chunk
+                chunk.preadjacency.setdefault(v.key, {}).setdefault(dt, 1)
+                chunk.preadjacency[v.key][dt] += 1
+
+                v.adjacency.setdefault(chunk.key, {}).setdefault(dt, 1)
+                v.adjacency[chunk.key][dt] += 1
+                # update the transition amongst the variables
+                for v_c in chunk.abstraction.values():
+                    v.adjacency.setdefault(v_c.key,{}).setdefault(dt, 1)
+                    v.adjacency[v_c.key][dt] += 1
+
+            #   v   <--- v_c
+            #  self <--- chunk
+            for v_c in chunk.abstraction.values():
+                v_c.preadjacency.setdefault(self.key, {}).setdefault(dt, 1)
+                v_c.preadjacency[self.key][dt] += 1
+
+                self.adjacency.setdefault(v_c.key, {}).setdefault(dt, 1)
+                self.adjacency[v_c.key][dt] += 1
+
+                # update the transition amongst the variables
+                for v in self.abstraction.values():
+                    v_c.preadjacency.setdefault(v.key, {}).setdefault(dt, 1)
+                    v_c.preadjacency[v.key][dt] += 1
         return
 
     def contentagreement(self, content):
@@ -424,6 +491,30 @@ class Chunk:
             return False
         else:  # sizes are the same
             return len(self.content.intersection(content)) == len(content)
+
+    def get_pl(self, n_ans = 0):
+        '''Obtain the parsing length needed to get from the parent chunk to this particular chunk '''
+
+        if len(list(self.acl.keys())) == 0:
+            return n_ans
+        else:
+            ancestor = list(self.acl.keys())[0]# TODO: what if there are multiple ancestors?
+            return len(ancestor.cr) # the number of children of its right descendent (as so far parsing is implemented from the left to right)
+
+    def get_rep_entropy(self):
+        '''The uncertainty carried via identifying this chunk to parse the sequene'''
+        if len(self.includedvariables) == 0:
+            return 0
+        else:
+            entropy = 0 # variables are assumed to be independent, therefore their entropies are additive
+            for key, var in self.includedvariables.items():
+                entropy = entropy + var.get_rep_entropy()
+            return entropy
+
+
+
+
+
 
 
 # TODO: upon parsing, isinstance(51,Chunk) can be used to check whether something is a chunk or a variable
@@ -440,15 +531,20 @@ class Variable():
         ##################### Property Parameter ######################
         self.count = self.get_count(entailingchunks)
         self.key = self.get_variable_key()
+        self.identificationfreq = 1 # how often the variable has been identified as occurring in the sequence (i.e., how often the variable has been used to parse the sequence)
         self.current_content = None # dynamic value, any of the entailing chunks that this variable is taking its value in
         self.entailingchunknames = self.getentailingchunknames(entailingchunks)
         ##################### Relational Parameter ######################
         self.adjacency = self.get_adjacency(entailingchunks)#should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
+        self.preadjacency = self.get_preadjacency(entailingchunks)#should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
+
         self.entailingchunks = entailingchunks
         self.chunks = {} # chunks that this variable is a part of
+        self.abstraction = {} # variables that this variable is a part of
         self.chunk_probabilities = {}
         self.ordered_content = [self.key] #specify the order of chunks and variables
         self.vertex_location = self.get_vertex_location(entailingchunks)
+        self.volume = self.get_average_explanable_volume(entailingchunks)
 
 
         # There is only variable relationship, but no relationship between variable and left/right parent/child,
@@ -464,11 +560,63 @@ class Variable():
         self.acr = {} # right ancestor
 
 
+    def merge_two_variables(self, v):
+        # when there are two variables that each entails the same chunks, merge the two variables into one
+
+        self.count = self.count + v.count
+        self.adjacency = self.merge_adjacency(self.adjacency, v.adjacency)
+        self.preadjacency = self.merge_adjacency(self.preadjacency, v.preadjacency)
+        self.entailingchunks = self.entailingchunks.union(v.entailingchunks)
+        self.chunk_probabilities = self.merge_chunk_probabilities(self.chunk_probabilities, v.chunk_probabilities)
+        return
+
+    def merge_adjacency(self, adj1, adj2):
+        # merge two adjacency matrices from two variables
+        for key,_ in adj2.items():
+            adj1.setdefault(key, {})
+            for dt, freq in adj2[key].items():
+                adj1[key].setdefault(dt, 0)
+                adj1[key][dt] += adj2[key][dt]
+        return adj1
+
+    def merge_chunk_probabilities(self, cp1, cp2):
+        # merge two chunk probabilities from two variables
+        for key, value in cp2.items():
+            cp1.setdefault(key, 0)
+            cp1[key] += cp2[key]
+        return cp1
+
+
     def sample_current_content(self):
         '''sample one of the entailing chunks as the current content of the variable'''
         self.current_content = np.random.choice(list(self.chunk_probabilities.keys()), 1, p = list(self.chunk_probabilities.values()))
         return
 
+    def sample_content(self):
+        '''sample one of the entailing chunks as the current content of the variable'''
+        freqs = [ck.count for ck in self.entailingchunks]
+        sampled_chunk = np.random.choice(list(self.entailingchunks), 1, p=[f/sum(freqs) for f in freqs])[0]
+        return sampled_chunk.ordered_content # returns a list containing sets and strings as its items
+
+    def substantiate_chunk_probabilities(self):
+        """Based on the entailing chunks, substantiate the chunk probabilities for sampling and other proposes """
+        for ck in self.entailingchunks:
+            self.chunk_probabilities[ck.key] = ck.count
+        return
+
+
+    def get_average_explanable_volume(self, entailingchunks):
+        """Evalaute the average explanatory volume based on one parsing of such variable"""
+        fs = []
+        vs = []
+        for ck in entailingchunks:
+            fs.append(ck.count)
+            vs.append(ck.volume)
+        if sum(fs)>0:
+            ps = [f/sum(fs) for f in fs]
+        else:
+            ps = [0]*len(fs)
+        return sum([p*v for p,v in zip(ps,vs)])
 
     def get_count(self, entailingchunks):
         count = 0
@@ -476,10 +624,10 @@ class Variable():
             count = count + ck.count
         return count
 
-    def update(self, varinstance):  # when any of its associated chunks are identified
-        if varinstance in self.content:
-            self.count[varinstance] = self.count[varinstance] + 1
-        self.totalcount += 1
+    def update(self):  # when any of its associated chunks are identified
+        # if varinstance in self.content:
+        #     self.count[varinstance] = self.count[varinstance] + 1
+        self.count += 1
         return
 
     def get_vertex_location(self, entailingchunks):
@@ -510,6 +658,26 @@ class Variable():
                     for dt in chunk.adjacency[cr]:
                         adjacency[cr][dt] = chunk.adjacency[cr][dt]
         return adjacency
+
+    def get_preadjacency(self, entailingchunks):
+        # I think we might not need it
+        preadjacency = {}
+        dts = set()
+        entailingchunks = set(entailingchunks)
+        for chunk in entailingchunks:
+            for cl in chunk.preadjacency:
+                if cl in preadjacency.keys():
+                    for dt in chunk.preadjacency[cl]:
+                        if dt in list(preadjacency[cl].keys()):
+                            preadjacency[cl][dt] = preadjacency[cl][dt] + chunk.preadjacency[cl][dt]
+                        else:
+                            preadjacency[cl][dt] = chunk.preadjacency[cl][dt]
+                else:
+                    preadjacency[cl] = {}
+                    for dt in chunk.preadjacency[cl]:
+                        preadjacency[cl][dt] = chunk.preadjacency[cl][dt]
+        return preadjacency
+
 
     # def update_transition(self, chunkidx, dt):  # _c_
     #     # transition can be chunk or variable
@@ -575,3 +743,24 @@ class Variable():
         # for obj in self.content: # obj can be chunk, or variable
         pass
 
+    def get_rc(self):
+        ''' Evaluate the representation complexity
+        rc: the encoding cost of distinguishing the entailing variables from its parent variable
+         returns the minimal encoding length to distinguish the entailing variables/chunks from this variable
+         '''
+        ps = [ck.count for ck in self.entailingchunks]
+        ps = list(filter(lambda x : x != 0, ps))
+        info = [-np.log(c/sum(ps)) for c in ps]
+        return sum(info)
+
+
+    def get_rep_entropy(self):
+        """Obtain the representation entropy of a variable"""
+        freq = [ck.count for ck in self.entailingchunks]
+        freq = list(filter(lambda x: x != 0, freq))
+        ps = np.array([f/sum(freq) for f in freq])
+        return sum(ps*(-np.log2(ps)))
+
+
+    def get_entailmentcount(self):
+        return sum([ck.count for ck in self.entailingchunks])

@@ -24,7 +24,68 @@ def simple_abstraction_I():
         seq[i+2,:,:] = np.random.choice([1, 5])
         i = i + 4
     return seq
-    
+
+
+def abstraction_illustration(seql = 1000):
+    '''Shows that abstraction enables the model to learn better than chunks'''
+    chunk = [1, 2, 3, 4, 5]
+    abstraction = [[1, 2, 3], [4, 5], [2, 3, 4], [3, 4, 5], [2, 2], [4, 4], [5, 1]]
+    seq = []
+    while len(seq) <= 20000:
+        seq = seq + chunk+abstraction[np.random.randint(len(abstraction))]+chunk
+        seq.append(0)
+    seq = seq[0:seql]
+    seq = np.array(seq).reshape((len(seq),1,1))
+
+    with open('sample_abstract_sequence.npy', 'wb') as f:
+        np.save(f, seq)
+    return seq
+
+
+def exp2(control = False):
+    if not control:
+        training_seq = []
+        testing_seq = []
+        fixedparts = [4,5,6,5,4,6,6,5,4]
+        for _ in range(0,40):
+            seq = fixedparts.copy()
+            seq.insert(2, np.random.choice([1,2,3]))
+            seq.insert(6, np.random.choice([1,2,3]))
+            seq.insert(10, np.random.choice([1,2,3]))
+            training_seq.append(seq)
+
+        testfixedparts = [5,6,4,4,6,5,6,4,5]
+        for _ in range(0,24):
+            seq = testfixedparts.copy()
+            seq.insert(2, np.random.choice([1,2,3]))
+            seq.insert(6, np.random.choice([1,2,3]))
+            seq.insert(10, np.random.choice([1,2,3]))
+            testing_seq.append(seq)
+
+        return training_seq,testing_seq
+    else:
+        training_seq = []
+        testing_seq = []
+        fixedparts = [4, 5, 6, 5, 4, 6, 6, 5, 4]
+        for _ in range(0, 40):
+            seq = fixedparts.copy()
+            seq.insert(2, 1)
+            seq.insert(6, 2)
+            seq.insert(10, 3)
+            training_seq.append(seq)
+
+        testfixedparts = [5, 6, 4, 4, 6, 5, 6, 4, 5]
+        for _ in range(0, 24):
+            seq = testfixedparts.copy()
+            seq.insert(2, np.random.choice([1, 2, 3]))
+            seq.insert(6, np.random.choice([1, 2, 3]))
+            seq.insert(10, np.random.choice([1, 2, 3]))
+            testing_seq.append(seq)
+
+        return training_seq, testing_seq
+
+
+
 def simple_seq():
     seq = np.array([[[0]], [[1]], [[2]], [[3]],[[4]],[[5]],[[6]],[[7]],[[8]],[[9]],[[10]],[[11]],[[12]]])
     return seq

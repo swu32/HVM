@@ -41,6 +41,35 @@ class CG1:
         self.W = 1
         self.zero = None
         self.relational_graph = False
+        self.learning_data = []# records the learning log of the chunking graph
+        self.prev = None # the previous iteration, used to determine whether the next thing to do is chunking or abstraction learning
+
+    def plot_learning_progress(self):
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        titles = ['parsing length', 'representation complexity', 'explanatory volume', 'sequence complexity',
+                  'representation entropy', 'n chunks', 'n variables','storage cost']
+        units = ['n chunk', 'bits', 'l', 'bits', 'bits', 'n chunk', 'n variable','bits']
+        ld = np.array(self.learning_data)
+        # Create a figure and subplots with 2 rows and 3 columns
+        fig, axs = plt.subplots(2, 4, figsize=(10, 6))
+        x = np.cumsum(ld[:, 0])
+        for i, ax in enumerate(axs.flat):
+            if i >= 8:
+                break
+            y = ld[:, i + 1]
+            ax.plot(x, y)
+            ax.set_title(titles[i])
+            ax.set_ylabel(units[i])
+            ax.set_xlabel('Sequence Length')
+        # Adjust spacing between subplots
+        fig.tight_layout()
+        # Show the figure
+        plt.show()
+        # save the figure
+        fig.savefig('learning_progress.png')
+        return
 
     def get_N(self):
         """returns the number of parsed observations"""
@@ -48,8 +77,41 @@ class CG1:
         N = 0
         for i in self.chunks:
             N = N + self.chunks[i].count
+        for i in self.variables:
+            N = N + self.variables[i].count
         return N
 
+
+    def rep_cleaning(self):
+        """remove unused representations"""
+        keys = list(self.chunks.keys())
+        for i in keys:
+            if self.chunks[i].parse == 0:
+                for _acl in self.chunks[i].acl:
+                    _acl.cl.pop(self.chunks[i])
+                for _acr in self.chunks[i].acr:
+                    _acr.cr.pop(self.chunks[i])
+
+                for v in list(self.chunks[i].includedvariables.values()):
+                    try:
+                        v.chunks.pop(i)
+                    except(KeyError):
+                        print()
+                self.chunks.pop(i)
+                if i in self.concrete_chunks:
+                    self.concrete_chunks.pop(i)
+
+
+        keys = list(self.variables.keys())
+        for i in keys:
+            if self.variables[i].identificationfreq == 0:
+                for c in self.variables[i].entailingchunks:
+                    c.abstraction.remove(self.variables[i])
+                    # do not remove entailing chunks first, see what will happen
+                self.variables.pop(i)
+
+        # TODO: clean adjacency and preadjacency
+        return
 
 
     def get_N_transition(self, dt=None):
@@ -84,7 +146,7 @@ class CG1:
         return
 
     def get_concrete_content(self, chunk):
-        '''Obtain sampled concrete chunks'''
+        ''' Obtain the concrete content of a chunk with variable components '''
         concrete_content = []
         for ck in chunk.ordered_content:
             if type(ck) == str:
@@ -103,11 +165,19 @@ class CG1:
         return sampledlist
 
 
-    def sample_instances(self):
+    def sample_variable_instances(self, generative_model = True):
+        """Specifiy all variables via sampling and specify the variable's current_content as the sampled content """
         # sample concrete chunks for each learned variable
         for _,v in self.variables.items():
-            sampleindex = np.random.choice(np.arange(0,len(v.chunk_probabilities),1), 1, p=list(v.chunk_probabilities.values()))[0]
-            v.current_content = list(v.chunk_probabilities.keys())[sampleindex]
+            if not generative_model:
+                v.substantiate_chunk_probabilities()
+            # sampleindex = np.random.choice(np.arange(0,len(v.chunk_probabilities),1), 1, p= [i / sum(list(v.chunk_probabilities.values())) for i in list(v.chunk_probabilities.values())])[0]
+            # v.current_content = list(v.chunk_probabilities.keys())[sampleindex]
+            v.current_content = v.sample_content()
+
+            # sometimes the randomly chosen chunks can be of the same type
+            # v.current_content = list(v.entailingchunks.keys())[sampleindex].ordered_content #a list of sets (in case of concrete element) and strings
+            # v.current_content = v.entailingchunks[sampleindex].ordered_content  # a list of sets (in case of concrete element) and strings
         return
 
     def extrapolate_variable(self, chunk):
@@ -145,9 +215,11 @@ class CG1:
         assert len(cl.adjacency) > 0
         assert dt in list(cl.adjacency[cridx].keys())
         N = self.get_N()
+        if N == 0:
+            print('?')
         N_transition = self.get_N_transition(dt=dt)
 
-        N_min = 5
+        N_min = 3
         # Expected
         ep1p1 = (cl.count / N) * (cr.count / N) * N_transition
         ep1p0 = (cl.count / N) * (N - cr.count) / N * N_transition
@@ -165,14 +237,21 @@ class CG1:
                     if dt in list(ncl.adjacency[cridx].keys()):
                         op0p1 = op0p1 + ncl.adjacency[cridx][dt]
                         for ncridx in list(ncl.adjacency.keys()):
-                            if self.chunks[ncridx] != cr:
-                                op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
+                            if ncridx in self.chunks:
+                                if self.chunks[ncridx] != cr:
+                                    op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
+                            else:
+                                if self.variables[ncridx] != cr:
+                                    op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
 
         if op0p0 <= N_min and op1p0 <= N_min and op1p1 <= N_min and op0p1 <= N_min:
             return True
         else:
-            _, pvalue = stats.chisquare([op1p1, op1p0, op0p1, op0p0], f_exp=[ep1p1, ep1p0, ep0p1, ep0p0], ddof=1)
-            # print('p value is ', pvalue)
+            obs = [op1p1, op1p0, op0p1, op0p0]
+            exp = [ep1p1, ep1p0, ep0p1, ep0p0]
+            exp = [item / sum(exp)*sum(obs) for item in exp]
+            _, pvalue = stats.chisquare(obs, f_exp=exp, ddof=1)
+            print('p value is ', pvalue)
             if pvalue < 0.05:
                 return False  # reject independence hypothesis, there is a correlation
             else:
@@ -346,10 +425,10 @@ class CG1:
         self.vertex_list.append(self.make_hash(newc.ordered_content))
         self.chunks[newc.key] = newc  # add observation
 
-        if len(newc.variables) == 0:  # record concrete chunks and variables separately
+        if len(newc.includedvariables) == 0:  # record concrete chunks and variables separately
             self.concrete_chunks[newc.key] = newc
         else:
-            for varkey, varc in newc.variables.items():
+            for varkey, varc in newc.includedvariables.items():
                 self.variables[varkey] = varc
                 self.variablekeys[varc.entailingchunknames] = varc
                 varc.chunks[newc.key] = newc
@@ -399,16 +478,26 @@ class CG1:
 
     def forget(self):
         """ discounting past observations if the number of frequencies is beyond deletion threshold"""
-        for chunk in self.chunks:
+        def apply_threshold(adjacency):
+            for adj in list(adjacency.keys()):
+                for dt in list(adjacency[adj].keys()):
+                    adjacency[adj][dt] *= self.theta
+                if sum(list(adjacency[adj].values())) < self.deletion_threshold:
+                    adjacency.pop(adj)
+
+        # discounting past observations
+        for chunkkey, chunk in (self.chunks | self.variables).items():
             chunk.count = chunk.count * self.theta
-            # if chunk.count < self.deletion_threshold: # for now, cancel deletion threshold, as index to chunk is
-            # still vital
-            #     self.chunks.pop(chunk)
-            for dt in list(chunk.adjacency.keys()):
-                for adj in list(chunk.adjacency[dt].keys()):
-                    chunk.adjacency[dt][adj] = chunk.adjacency[dt][adj] * self.theta
-                    if chunk.adjacency[dt][adj] < self.deletion_threshold:
-                        chunk.adjacency[dt].pop(adj)
+            # if chunk.count < self.deletion_threshold: # for now, cancel deletion threshold, as index to chunk is still vital
+            #     self.chunks.pop(chunkkey)
+            apply_threshold(chunk.adjacency)
+            apply_threshold(chunk.preadjacency)
+
+        # identify unused variables
+        for _, var in self.variables.items():
+            var.identificationfreq = var.identificationfreq * self.theta
+            if var.identificationfreq < self.deletion_threshold:
+                self.variables.pop(var)
 
         return
 
@@ -416,7 +505,7 @@ class CG1:
     def checkcontentoverlap(self, chunk):
         '''check if the content is already contained in one of the chunks'''
         try:
-            if len(chunk.variables) ==0:
+            if len(chunk.includedvariables) ==0:
                 if chunk.key in self.chunks:
                     return self.chunks[chunk.key]
                 else:
@@ -451,12 +540,12 @@ class CG1:
             self.add_chunk(cat, leftkey=prevkey, rightkey=currentkey)
             # iterate through all chunk transitions that could lead to the same concatination chunk
             cat.count = prev.adjacency[currentkey][dt]  # need to add estimates of how frequent the joint frequency occurred
-            prev.count = prev.count - cat.count  # reduce one sample observation from the previous chunk
-            current.count = current.count - cat.count
-
             # empty out adjacency and preadjacency transitions
             prev.adjacency[current.key][dt] = 0
-            current.preadjacency[prev.key][dt] = 0
+            try:
+                current.preadjacency[prev.key][dt] = 0
+            except(KeyError):
+                print('')
 
             # cat.adjacency = copy.deepcopy(current.adjacency)
             # cat.preadjacency = copy.deepcopy(prev.preadjacency)
@@ -473,8 +562,8 @@ class CG1:
                                     # TODO: may need to merge nested dictionary
                                     _cat_count = self.chunks[ck].adjacency[_cr][_dt]
                                     cat.count = cat.count + _cat_count
-                                    ck.count = ck.count - _cat_count
-                                    _cr.count = _cr.count - _cat_count
+                                    if _cr.count<0 or ck.count <0:
+                                        print('') # this is never less than 0
 
                                     ck.adjacency[_cr][_dt] = 0
                                     _cr.preadjacency[ck][_dt] = 0
@@ -487,8 +576,8 @@ class CG1:
                                     cat.acr = self.check_and_add_to_dict(cat.acl, rightparent)
         else:
             chunk.count = chunk.count + prev.adjacency[currentkey][dt]  # need to add estimates of how frequent the joint frequency occurred
-            prev.count = prev.count - cat.count  # reduce one sample observation from the previous chunk
-            current.count = current.count - cat.count
+            if prev.count < 0 or current.count < 0:
+                print('')
             prev.adjacency[current.key][dt] = 0
             current.preadjacency[prev.key][dt] = 0
         return
@@ -497,16 +586,26 @@ class CG1:
         return
 
     def set_variable_adjacency(self, variable, entailingchunks):
+        ''' Update the transition and pretransition of newly established variables '''
         transition = {}
+        pretransition = {}
         for idx in entailingchunks:
             ck = self.chunks[idx]
             ck.abstraction.add(self)
-            for _dt in list(ck.adjacency.keys()):
-                if _dt not in list(transition.keys()):
-                    transition[_dt] = ck.adjacency[_dt]
-                else:
-                    transition[_dt] = transition[_dt] + ck.adjacency[_dt]
+
+            for _dt, value in ck.adjacency.items():
+                transition.setdefault(_dt,0)
+                transition[_dt] += value
+
+
+        for idx in entailingchunks:
+            ck = self.chunks[idx]
+            for _dt, value in ck.preadjacency.items():
+                pretransition.setdefault(_dt,0)
+                pretransition[_dt] += value
+
         variable.adjacency = transition
+        variable.preadjacency = pretransition
         return
 
     def variable_finding(self, cat):
@@ -520,7 +619,7 @@ class CG1:
         max_intersect_count = 0 #
         max_intersect_chunks = []  # chunks that needs to be merged
         for ck in self.chunks:
-            if ck.variables==[] and cat.variables == []:
+            if ck.includedvariables==[] and cat.includedvariables == []:
                 intersect = ck.content.intersection(cat.content)
                 intersect_chunks = []
                 c = 0  # how often this intersection is applicable across chunks
@@ -536,7 +635,7 @@ class CG1:
                     max_intersect_count = c
                     max_intersect_chunks = intersect_chunks
                     max_intersect = intersect
-            elif len(ck.variables)>0 and len(cat.variables)>0: # both of the chunks contain variables
+            elif len(ck.includedvariables)>0 and len(cat.includedvariables)>0: # both of the chunks contain variables
                 intersect = LongComSubS(list(ck.ordered_content), list(cat.ordered_content))
                 c = 0  # how often this intersection is applicable across chunks
                 intersect_chunks = [] # a list of string denoting chunk content and variable name
@@ -672,28 +771,60 @@ class CG1:
             l = l + chunkarray.shape[0]
         return img[1:seql, :, :]
 
-    def abstraction_learning(self):
+    def add_variable(self, v, candidate_variable_entailment):
+        storedvariable = self.check_variable_duplicates(v)
+        if storedvariable == None:  # check duplicates
+            self.variables[v.key] = v  # update chunking graph
+            self.variablekeys[v.entailingchunknames] = v
+            for ck in candidate_variable_entailment:
+                if ck in self.chunks:
+                    self.chunks[ck].abstraction[v.key] = v
+                else:
+                    self.variables[ck].abstraction[v.key] = v
+
+            return v
+        else:
+            # there is indeed a variable duplication
+            # if two variables share the same adjacency and preadjacency, then they are the same variable
+            if set(v.adjacency.keys()) == set(storedvariable.adjacency.keys()):
+                return storedvariable
+            else: # the same variable is identified with different adjacencies
+                storedvariable.merge_two_variables(v)
+                return storedvariable
+
+    def abstraction_learning(self, freq_T = 10):
         """
         Create variables from adjacency matrix.
         variable construction: chunks that share common ancestors and common descendents.
         pre---variable---post, for each dt time: variables with common cause and common effect
+        freq_T: frequency threhold
         """
         # TODO: another version with more flexible dt
         varchunks_to_add = []
         T = 1
-        for chunk in self.chunks.values(): #latestdescendents
+        for chunk in list(self.chunks.values()):#+list(self.variables.values()): only include chunks for the discovery of variables for now
             v_horizontal_ = set(chunk.adjacency.keys())
             # TODO: need to consider different times in the future
-            for postchunk in self.chunks.values():# latestdescedents
+            for postchunk in list(self.chunks.values()):#+list(self.variables.values()): #latestdescedents
                 v_vertical_ = set(postchunk.preadjacency.keys())
-                candidate_variable_entailment = v_horizontal_.intersection(v_vertical_)
-
+                temp_variable_entailment = v_horizontal_.intersection(v_vertical_)
+                candidate_variable_entailment = set()
                 freq_c = 0
-                for c in candidate_variable_entailment:
+                for c in temp_variable_entailment:
+                    if chunk.adjacency[c][0] > 0: candidate_variable_entailment.add(c)
                     freq_c = freq_c + chunk.adjacency[c][0]
-                if len(candidate_variable_entailment) > T and freq_c > 20: #register a variable
-                    candidate_variables = {self.chunks[candidate] for candidate in candidate_variable_entailment}
-                    v = Variable(candidate_variables, self)
+                if len(candidate_variable_entailment) > T and freq_c > freq_T: #register a variable
+                    print('previous chunk: ', chunk.key, ' post chunk: ', postchunk.key,
+                          ' candidate variable entailment ', temp_variable_entailment, 'freq', freq_c)
+
+                    candidate_variables = set()
+                    for candidate in candidate_variable_entailment:
+                        if candidate in self.chunks:
+                            candidate_variables.add(self.chunks[candidate])
+                        else:
+                            candidate_variables.add(self.variables[candidate])
+                    print(candidate_variable_entailment)
+                    v = Variable(candidate_variables)
                     v = self.add_variable(v, candidate_variable_entailment)
                     # create variable chunk: chunk + var + postchunk
                     # need to roll it out when chunk itself contains variables.
@@ -702,32 +833,28 @@ class CG1:
                     ordered_content = ordered_content + postchunk.ordered_content
                     V = {}
                     V[v.key] = v
-                    var_chunk = Chunk(([]), variables = V, ordered_content=ordered_content)
-                    varchunks_to_add.append(var_chunk)
+                    var_chunk = Chunk(([]), includedvariables = V, ordered_content=ordered_content)
+                    var_chunk.count = freq_c
+                    varchunks_to_add.append([var_chunk, chunk.key, postchunk.key])
 
-        for var_chunk in varchunks_to_add:
-            self.add_chunk(var_chunk)
+        for var_chunk, lp, rp in varchunks_to_add:
+            self.add_chunk(var_chunk, leftkey=lp, rightkey=rp)
+
+        print('the number of newly learned variable chunk is: ', len(varchunks_to_add))
         return
 
-    def check_variable_duplicates(self,newv):
+    def check_variable_duplicates(self, newv):
         try:
             if newv.entailingchunknames in set(list(self.variablekeys.keys())):
-                return True # duplicate
+                return self.variablekeys[newv.entailingchunknames] # duplicate
             else:
-                return False
+                for v in set(list(self.variablekeys.keys())):
+                    if set(newv.entailingchunknames).issubset(set(v)):
+                        return self.variablekeys[v]
+                return None
         except(TypeError):
             print('')
 
-
-    def add_variable(self, v, candidate_variable_entailment):
-        if self.check_variable_duplicates(v) == False:  # check duplicates
-            self.variables[v.key] = v  # update chunking graph
-            self.variablekeys[v.entailingchunknames] = v
-            for ck in candidate_variable_entailment:
-                self.chunks[ck].variables[v.key] = v
-            return v
-        else:
-            return self.variablekeys[v.entailingchunknames]
 
 
     def make_hash(self,o):
@@ -745,3 +872,183 @@ class CG1:
         new_o[k] = self.make_hash(v)
 
       return hash(tuple(frozenset(sorted(new_o.items()))))
+
+    def calculate_rc(self):
+        ''' Evaluate the representation complexity as learned by the variables in the current chunking graph
+        rc: the encoding cost of distinguishing the entailing variables from its parent variable
+        Can be interpretted as the encoding length to store variables and their entailment'''
+        rc = 0
+        for v in list(self.variables.values()):
+            rcv = v.get_rc()
+            rc = rc + rcv
+        print('average representation complexity from learning the variables is ', rc)
+        return rc
+
+    def calculate_pl(self):
+        ''' Calculate the average parsing steps needed to reach concrete chunk items '''
+        freqs = []
+        lens = []
+        for ck in self.chunks.values():
+            freqs.append(ck.count)
+            lens.append(ck.get_pl(n_ans = len(self.ancestors)))
+        ps = [f/sum(freqs) for f in freqs]
+        expected_parsing_length = sum([p*l for p,l in zip(ps,lens)])
+        print('average chunk search parsing length is ', expected_parsing_length)
+        return expected_parsing_length
+
+    def calculate_storage_cost(self):
+        ''' Calculate the storage cost of the chunking graph'''
+        ps = [ck.count for ck in self.chunks.values()]
+        ps = list(filter(lambda x: x != 0, ps))
+        info = [-np.log(c / sum(ps)) for c in ps]
+        return sum(info)
+
+    def calculate_explanatory_volume(self, parsing_length, sequence_length):
+        """Evaluate on average, how much of the sequence does one chunk unit explain
+        explanable set should not have redundency (two chunks cannot be identified at the same time)
+        sequence_length: the length of the sequence in single unit elements
+        parsing_length: length of chunkrecord after being parsed by chunks """
+        average_explanatory_volume = sequence_length/parsing_length
+        print('average explanatory volume per parse is: ', average_explanatory_volume)
+        return average_explanatory_volume
+
+    def calculate_representation_entropy(self, chunkrecord):
+        """Calculate the amount of uncertainty in the unit of bits to parse a chunkrecord sequence"""
+        rep_entropy = 0
+        for t in list(chunkrecord.keys()):
+            for itemname, time in chunkrecord[t]:
+                if itemname in self.chunks:
+                    chunk = self.chunks[itemname]
+                    rep_entropy = rep_entropy + chunk.get_rep_entropy()
+                else:
+                    var = self.variables[itemname]
+                    rep_entropy = rep_entropy + var.get_rep_entropy()
+
+
+        print('average uncertainty in sequence parse is ', rep_entropy)
+        return rep_entropy
+
+    def calculate_sequence_complexity(self,chunkrecord, supportset):
+        """Evaluate the encoding complexity of a sequence parsed as chunkrecord
+        supportset: the set of chunks/metachunks that is used to parse the sequence
+        chunk_record: parsed sequence using the chunks/variables in the supportset
+        Note: complexity is evaluated on the parsing frequencies of individual chunks"""
+        support_p = {}
+        for ckk,ck in supportset.items():
+            support_p[ckk] = ck.count
+        sumcount = sum(list(support_p.values()))
+        for ckk in support_p:
+            support_p[ckk] = support_p[ckk]/sumcount
+        complexity = 0
+        for t in list(chunkrecord.keys()):
+            complexity = complexity + -np.log2(support_p[chunkrecord[t][0][0]])
+
+        print('complexity of the sequence is ', complexity)
+        return complexity
+
+
+
+
+    def calculate_recall_acc(self, chunkrecord, meta_chunkrecord):
+        """Evaluate the average deviation of the sampled chunks from a meta representation from the specific instances of chunk record
+        sample meta-chunk record until arriving at the specific leaves of the representation tree"""
+        for t in list(chunkrecord.keys()):
+            specific_items = set()
+            recalled_items = set()
+
+            for itemname, time in chunkrecord[t]:
+                item = cg.concrete_chunks[itemname]
+                specific_items.add(item)
+
+            for itemname, time in meta_chunkrecord[t]:
+                metachunk = cg.chunks[itemname] # this item may contain variables
+                ordered_content = metachunk.ordered_content
+                concrete_content = copy.deepcopy(ordered_content)
+                allsampled = False
+                while allsampled == False:
+                    k = 0
+                    for i in range(0, len(ordered_content)):
+                        thiscontent = ordered_content[i]# data type should be a set in case there are no variables
+                        if type(thiscontent) == str:
+                            sampled_content = metachunk.includedvariables[thiscontent].current_content
+                            concrete_content = concrete_content[:i] + sampled_content + concrete_content[i+1:]
+                        else: k = k + 1
+                        print('ordered content is ', ordered_content, ', sampled content is: ', sampled_content)
+                    if k == len(ordered_content): allsampled = True
+                    ordered_content = copy.deepcopy(sampled_content)
+                    
+        return
+
+    def obtain_concrete_content_from_variables(self, chunkname):
+        """enumerate concrete chunk instances via breadth-first-search
+            input:
+            cg: chunking graph, with all variables already sampled
+            chunkname: the name of the meta chunk"""
+
+        def dict_to_list(content_dict):
+            returnlist=[]
+            K = list(content_dict.keys())
+            for i in sorted(K):
+                if type(content_dict[int(i)]) == list:
+                    returnlist = returnlist + content_dict[int(i)]
+                else:
+                    returnlist.append(content_dict[int(i)])
+
+            return returnlist
+
+        metachunk = self.chunks[chunkname] if chunkname in self.chunks else self.variables[chunkname]  # this item may contain variables
+        ordered_content = metachunk.ordered_content
+        variable_indices = [idx for idx, item in enumerate(ordered_content) if type(item) == str]
+        content_dict = {idx: [item] for idx, item in enumerate(ordered_content)}
+        print('--------------------------------')
+        print('ordered content is: ', ordered_content)
+        print('variable indices are :', variable_indices)
+        print('content_dict is :', content_dict)
+
+        ct = 0
+        while len(variable_indices) > 0: # each while loop is an iteration of a deeper layer
+            ct = ct + 1
+            if ct > 15:
+                break
+            for idx in variable_indices:
+                thisvariablekey = ordered_content[idx]
+                metachunk = self.chunks[thisvariablekey] if thisvariablekey in self.chunks else self.variables[
+                    thisvariablekey]  # this item may contain variables
+                if type(metachunk) == Chunk:# variable inside a chunk
+                    variable_content = metachunk.includedvariables[thisvariablekey].current_content # this will be a list of sets again
+                else:# type(metachunk) == Variable:
+                    variable_content = metachunk.current_content # this will be a list of sets again
+                content_dict[idx] = variable_content
+            try:
+                ordered_content = dict_to_list(content_dict)
+                content_dict = {idx: [item] for idx, item in enumerate(ordered_content)}
+
+            except(KeyError):
+                print()
+
+            variable_indices = [idx for idx, item in enumerate(ordered_content) if type(item) == str]
+            print('ordered content is: ', ordered_content)
+            print('variable indices are :', variable_indices)
+            print('content_dict is :', content_dict)
+
+        return ordered_content
+
+
+
+
+    def checkvariablesequencematch(self, chunkname, seq):
+        """enumerate concrete chunk instances via breadth-first-search
+            input:
+            cg: chunking graph, with all variables already sampled
+            chunkname: the name of the meta chunk
+            seq: the observational sequence
+            """
+
+        metachunk = self.chunks[chunkname] if chunkname in self.chunks else self.variables[chunkname]  # this item may contain variables
+        ordered_content = metachunk.ordered_content
+        variable_indices = [idx for idx, item in enumerate(ordered_content) if type(item) == str]
+        content_dict = {idx: [item] for idx, item in enumerate(ordered_content)}
+        '''xxx vvvv xxx'''
+
+
+        return ordered_contents

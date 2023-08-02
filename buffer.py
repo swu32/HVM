@@ -2,9 +2,9 @@ class buffer():
     def __init__(self,t, seq, seql, arrayl, reloadsize = 20):
         self.t = t
         self.seq = seq
-        self.seql = seql
+        self.seql = seql # the total number of unique sequential elements
         self.reloadsize = reloadsize
-        self.arrayl = arrayl
+        self.arrayl = arrayl #length of the sequence array, used for checking whether the sequence parsing is over
 
     def __len__(self):
         return self.seql
@@ -25,8 +25,6 @@ class buffer():
             for item in seq:
                 listobs = list(item)
                 listobs[0] = int(listobs[0] - mintime)# this value can be negative, which means there are unexplained sequence before.
-                if listobs[0]<0:
-                    print('')
                 seqcopy.append(tuple(listobs))  # there should not be negative ts, otherwise something is not explained properly
             self.seq = seqcopy
             # if self.seql
