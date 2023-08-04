@@ -44,10 +44,9 @@ def hcm_rational_v1(arayseq, cg):
     return
 
 
-def parse_sequence(cg, seq, arayseq, seql=1000, candidate_set=set()):
+def parse_sequence(cg, seq, arayseq, seql=1000, candidate_set= set()):
     ''' candidate_set: a subset of chunks inside cg which is used to parse the sequence, only biggest chunk
     inside the candidate set can be identified '''
-
     t = 0
     Buffer = buffer(
         t, seq, seql, arayseq.shape[0]
@@ -80,51 +79,77 @@ def parse_sequence(cg, seq, arayseq, seql=1000, candidate_set=set()):
 
 
 epsilon = 0.0000001
-def parsing(cg, seq, arayseq, nit, arayl=1000, seql=1000):
+def parsing(cg, seq, arayseq, nit, arayl=1000, seql=1000, ABS = True):
     print('parsing')
     '''updates the transition and marginals via parsing the sequence'''
+    if nit == 23:
+        print()
     cg.empty_counts()  # always empty the number of counts for a chunking graph before the next parse
     cg, chunkrecord = parse_sequence(cg, seq, arayseq, seql=seql)
     cg.rep_cleaning()
     cg = evaluate_representation(cg, chunkrecord, seql)
-    if cg.prev == 'chunking':
-        chunklearnable = False #
+    if nit >= 25:
+        return cg
+    if cg.prev == 'chunking':chunklearnable = False #
         # chunklearnable = cg.learning_data[-1][3] > cg.learning_data[-2][3] + epsilon # trajectory of improvement
-    elif cg.prev == 'abstraction':
-        chunklearnable = True
+    elif cg.prev == 'abstraction':chunklearnable = True
+    elif ABS == False: chunklearnable = True
     else:
-        if nit <=2:
-            chunklearnable = True
-        else:
-            chunklearnable = cg.independence_test() == False  # or it >=maxit
+        if nit <=2:chunklearnable = True
+        else:chunklearnable = cg.independence_test() == False  # or it >=maxit
     nit = nit + 1
     if chunklearnable:
         cg.prev = 'chunking'
-        return chunking(cg, seq, arayseq, nit)
+        return chunking(cg, seq, arayseq, nit, ABS = ABS)
     else:  # no chunks to learn, learn abstraction instead
         cg.prev = 'abstraction'
-        return abstraction(cg, chunkrecord, seq, arayseq, nit)
+        return abstraction(cg, chunkrecord, seq, arayseq, nit, ABS = ABS)
 
 
-def chunking(cg, seq, arayseq, nit):
+def chunking(cg, seq, arayseq, nit, ABS = True):
     print('chunking')
     nit = nit + 1
     cg, cp = rational_learning(cg, n_update=10)  # rationally learn until loss function do not converge
-    return parsing(cg, seq, arayseq, nit)  # parse again and update chunks again
+    return parsing(cg, seq, arayseq, nit,ABS=ABS)  # parse again and update chunks again
 
 
-def abstraction(cg, chunkrecord, seq, arayseq, nit):
+def abstraction(cg, chunkrecord, seq, arayseq, nit, ABS = True):
     print('abstraction')
-    nit = nit + 1
-    cg.abstraction_learning()
-    for c in list(cg.chunks.values()):
-        if c.count < 0:
-            print('')
-    cg = evaluate_representation(cg, chunkrecord)
-    if nit >= 40:
-        return cg
-    else:
-        return parsing(cg, seq, arayseq, nit)  # parse again and update chunks again
+    #nit = nit + 1
+    if ABS:
+        cg.abstraction_learning()
+        for c in list(cg.chunks.values()):
+            if c.count < 0:
+                print('')
+    #cg = evaluate_representation(cg, chunkrecord)
+    return parsing(cg, seq, arayseq, nit, ABS=ABS)  # parse again and update chunks again
+
+def curriculum2():
+    print('parsing')
+    '''updates the transition and marginals via parsing the sequence'''
+    while nit <=maxiter:
+        print('parsing')
+        '''updates the transition and marginals via parsing the sequence'''
+        cg.empty_counts()  # always empty the number of counts for a chunking graph before the next parse
+        cg, chunkrecord = parse_sequence(cg, seq, arayseq, seql=seql)
+        cg.rep_cleaning()
+        cg = evaluate_representation(cg, chunkrecord, seql)
+        nit = nit + 1
+
+        cg.empty_counts()  # always empty the number of counts for a chunking graph before the next parse
+        cg, chunkrecord = parse_sequence(cg, seq, arayseq, seql=seql)
+        cg.rep_cleaning()
+        cg = evaluate_representation(cg, chunkrecord, seql)
+
+        cg, cp = rational_learning(cg, n_update=10)  # rationally learn until loss function do not converge
+        nit = nit + 1
+        cg.abstraction_learning()
+        cg = evaluate_representation(cg, chunkrecord)
+
+    return cg
+
+
+
 
 
 def metaparse(cg, chunkrecord, arayseq, nit, chunklearnable=True):
@@ -141,13 +166,12 @@ def metaparse(cg, chunkrecord, arayseq, nit, chunklearnable=True):
         abstraction(cg, chunkrecord, arayseq, nit)
 
 
-def hcm_markov_control(arayseq, cg):
+def hcm_markov_control(arayseq, cg, ABS = True):
     """chunking and abstraction learning structured in the shape of a finite state machine"""
     seql, H, W = arayseq.shape
     cg.update_hw(H, W)  # update initial parameters
     seq, seql = convert_sequence(arayseq[:, :, :])  # loaded with the 0th observation
-    # enter into the state control loop
-    cg = parsing(cg, seq, arayseq, 0, seql)
+    cg = parsing(cg, seq, arayseq, 0, seql,ABS = ABS) # enter into the state control loop
     return cg
 
 
@@ -363,6 +387,8 @@ def rational_learning(cg, n_update=10, complexity_limit=-np.log2(0.05)):
         prev_idx, current_idx, cat, dt = candidancy_pairs[i][0]
         cg.chunking_reorganization(prev_idx, current_idx, cat, dt)
         complexity = -np.log2(candidancy_pairs[i][1] / totalcount)
+        if complexity<0:
+            print()
         print('complexity is ', complexity)
         cumcomplexity = cumcomplexity + complexity
         if cumcomplexity > complexity_limit:
@@ -1081,11 +1107,11 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype='full'):  # _c_ful
     #print('sequence with chunks to be identified is ', seqc)
 
     def findmatch(current, seqc):
-        #print('current is ', current)
-        # asset that at least one chunk in current explains seqc
+        # print('current is ', current)
+        # assert that at least one chunk in current explains seqc
         # search for variables that match the sequences
         for chunk in current:  # what if there are multiple chunks that satisfies the relation?
-            match, matchingcontent = check_recursive_match(seqc, set(), chunk,cg)
+            match, matchingcontent = check_recursive_match(seqc, set(), chunk, cg)
             # if matchingcontent == None:
             #     print('matching content is none')
             if match:
@@ -1114,7 +1140,6 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype='full'):  # _c_ful
             c_star, c_star_content = findmatch(current, seqc)
             if c_star is not None:
                 #print('c star is ', c_star.ordered_content)
-
                 matching_chunks.add(c_star)
                 c_star.parse = c_star.parse + 1
                 current = list(c_star.cl.keys())

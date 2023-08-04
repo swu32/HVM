@@ -68,6 +68,7 @@ class Chunk:
         self.boundarycontent = set()
 
         self.abstraction = {}  # the variables summarizing this chunk
+        self.all_abstraction = set() # all of the chunk's abstractions
         self.cl = {}  # left decendent
         self.cr = {}  # right decendent
         self.acl = {} # left ancestor
@@ -150,7 +151,6 @@ class Chunk:
 
     def update(self):
         self.count = self.count + 1
-
         # update the count of the abstracted variables
         if len(self.abstraction) > 0:
             self.update_variable_count()
@@ -244,6 +244,7 @@ class Chunk:
 
     def empty_counts(self):
         self.count = 0
+        self.parse = 0
         self.birth = None  # chunk creation time
         # empty transitional counts
         for chunkidx in list(self.adjacency.keys()):
@@ -509,6 +510,7 @@ class Chunk:
             entropy = 0 # variables are assumed to be independent, therefore their entropies are additive
             for key, var in self.includedvariables.items():
                 entropy = entropy + var.get_rep_entropy()
+            self.entropy = entropy
             return entropy
 
 
@@ -541,6 +543,7 @@ class Variable():
         self.entailingchunks = entailingchunks
         self.chunks = {} # chunks that this variable is a part of
         self.abstraction = {} # variables that this variable is a part of
+        self.all_abstraction = set()  # all of the variable's abstractions
         self.chunk_probabilities = {}
         self.ordered_content = [self.key] #specify the order of chunks and variables
         self.vertex_location = self.get_vertex_location(entailingchunks)
@@ -721,6 +724,7 @@ class Variable():
 
     def empty_counts(self):
         self.count = 0
+        self.parse = 0
         self.birth = None  # chunk creation time
         # empty transitional counts
         for chunkidx in list(self.adjacency.keys()):

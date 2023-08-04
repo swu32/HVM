@@ -548,6 +548,37 @@ def simonsays():
     return
 
 
+def plot_model_learning_comparison(cg1, cg2):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    titles = ['parsing length', 'representation complexity', 'explanatory volume', 'sequence complexity',
+              'representation entropy', 'n chunks', 'n variables','storage cost']
+    units = ['n chunk', 'bits', 'l', 'bits', 'bits', 'n chunk', 'n variable','bits']
+    ld1 = np.array(cg1.learning_data)
+    ld2 = np.array(cg2.learning_data)
+    # Create a figure and subplots with 2 rows and 3 columns
+    fig, axs = plt.subplots(2, 4, figsize=(10, 6))
+    x = np.cumsum(ld1[:, 0])
+
+    for i, ax in enumerate(axs.flat):
+        if i >= 8:
+            break
+        y1 = ld1[:, i + 1]
+        y2 = ld2[:, i + 1]
+        ax.plot(x, y1, label='HCM')
+        ax.plot(x, y2, label='HVM')
+        ax.set_title(titles[i])
+        ax.set_ylabel(units[i])
+        ax.set_xlabel('Sequence Length')
+    # Adjust spacing between subplots
+    fig.tight_layout()
+    # Show the figure
+    plt.legend()
+    plt.show()
+    # save the figure
+    fig.savefig('modelcomparison.png')
+    return
 
 def test_random_graph_abstraction():
     #cggt, seq = random_abstract_representation_graph(save=True)
@@ -555,9 +586,13 @@ def test_random_graph_abstraction():
     #     seq = np.load(f)
     with open('sample_abstract_sequence.npy', 'rb') as f:
         seq = np.load(f)
+    cghcm = CG1(DT=0.1, theta=0.996)
+    cghcm = hcm_markov_control(seq, cghcm, ABS = False)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
 
-    cg = CG1(DT=0.1, theta=0.996)
-    cg = hcm_markov_control(seq, cg)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+    cghvm = CG1(DT=0.1, theta=0.996)
+    cghvm = hcm_markov_control(seq, cghvm)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+
+    plot_model_learning_comparison(cghcm, cghvm)
     return
 
 def test_simple_abstraction():

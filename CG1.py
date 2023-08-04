@@ -84,9 +84,12 @@ class CG1:
 
     def rep_cleaning(self):
         """remove unused representations"""
+        # delete chunks
         keys = list(self.chunks.keys())
+        deleted_chunks = []
         for i in keys:
-            if self.chunks[i].parse == 0:
+            if self.chunks[i].count == 0 and self.chunks[i] not in self.ancestors:
+                deleted_chunks.append(i)
                 for _acl in self.chunks[i].acl:
                     _acl.cl.pop(self.chunks[i])
                 for _acr in self.chunks[i].acr:
@@ -101,16 +104,32 @@ class CG1:
                 if i in self.concrete_chunks:
                     self.concrete_chunks.pop(i)
 
-
+        print('deleted chunks are ', deleted_chunks)
         keys = list(self.variables.keys())
+        deleted_variables = []
         for i in keys:
             if self.variables[i].identificationfreq == 0:
+                deleted_variables.append(i)
                 for c in self.variables[i].entailingchunks:
                     c.abstraction.remove(self.variables[i])
                     # do not remove entailing chunks first, see what will happen
                 self.variables.pop(i)
 
-        # TODO: clean adjacency and preadjacency
+        # clean adjacency and preadjacency
+        for c in list(self.chunks.values()) + list(self.variables.values()):
+            for d in deleted_chunks + deleted_variables:
+                c.adjacency.pop(d, None)
+                c.preadjacency.pop(d, None)
+                c.all_abstraction.pop(d, None)
+                c.abstraction.pop(d, None)
+
+        for c in list(self.variables.values()):
+            for d in deleted_chunks:
+                c.chunks.pop(d, None)
+                c.entailingchunks.pop(d, None)
+                c.all_abstraction.pop(d, None)
+                c.abstraction.pop(d, None)
+
         return
 
 
@@ -194,17 +213,6 @@ class CG1:
             ck.abstraction[Var] = sum(chunk.adjacency[ck].item())
         return
 
-    # def abstraction_learning(self, ancestors):
-    #     # find all chunks with a common cause or a common effect, extrapolating them into a variable
-    #     if ancestors.cl == [] and ancestors.cr == []:
-    #         return
-    #     elif ancestors.cl != [] and ancestors.cr == []:
-    #         abstraction_learning(ancestors.cr)
-    #     elif ancestors.cl == [] and ancestors.cr != []:
-    #         abstraction_learning(ancestors.cl)
-    #     else:
-    #         abstraction_learning(ancestors.cl)
-    #         abstraction_learning(ancestors.cr)
 
     def hypothesis_test(self, clidx, cridx, dt):
         if clidx in self.chunks:cl = self.chunks[clidx]
@@ -232,20 +240,16 @@ class CG1:
         op0p1 = 0
         op0p0 = 0
         for ncl in list(self.chunks.values()):  # iterate over p0, which is the cases where cl is not observed
-            if ncl != cl:
-                if cridx in list(ncl.adjacency.keys()):
-                    if dt in list(ncl.adjacency[cridx].keys()):
-                        op0p1 = op0p1 + ncl.adjacency[cridx][dt]
-                        for ncridx in list(ncl.adjacency.keys()):
-                            if ncridx in self.chunks:
-                                if self.chunks[ncridx] != cr:
-                                    op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
-                            else:
-                                try:
-                                    if self.variables[ncridx] != cr:
-                                        op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
-                                except(KeyError):
-                                    print('')
+            if ncl != cl and cridx in list(ncl.adjacency.keys()):
+                if dt in list(ncl.adjacency[cridx].keys()):
+                    op0p1 = op0p1 + ncl.adjacency[cridx][dt]
+                    for ncridx in list(ncl.adjacency.keys()):
+                        if ncridx in self.chunks:
+                            if self.chunks[ncridx] != cr:
+                                op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
+                        else:
+                            if self.variables[ncridx] != cr:
+                                op0p0 = op0p0 + ncl.adjacency[ncridx][dt]
 
         if op0p0 <= N_min and op1p0 <= N_min and op1p1 <= N_min and op0p1 <= N_min:
             return True
@@ -774,6 +778,15 @@ class CG1:
             l = l + chunkarray.shape[0]
         return img[1:seql, :, :]
 
+    def update_allabstraction(self,ck,v):
+        if type(ck) == Chunk:# concrete chunks
+            ck.all_abstraction.add(v.key)
+            return
+        else: #ck is a variable
+            for cck in ck.entailingchunks:
+                cck.all_abstraction.add(v.key)
+                self.update_allabstraction(cck, v)
+
     def add_variable(self, v, candidate_variable_entailment):
         storedvariable = self.check_variable_duplicates(v)
         if storedvariable == None:  # check duplicates
@@ -784,6 +797,7 @@ class CG1:
                     self.chunks[ck].abstraction[v.key] = v
                 else:
                     self.variables[ck].abstraction[v.key] = v
+            self.update_allabstraction(v, v)
 
             return v
         else:
@@ -802,15 +816,16 @@ class CG1:
         pre---variable---post, for each dt time: variables with common cause and common effect
         freq_T: frequency threhold
         """
+        T = 5  # the minimal number of chunks that a variable should entail
+
         # TODO: another version with more flexible dt
         varchunks_to_add = []
-        T = 1
-        for chunk in list(self.chunks.values()):#+list(self.variables.values()): only include chunks for the discovery of variables for now
+        for chunk in list(self.chunks.values()) + list(self.variables.values()):
             v_horizontal_ = set(chunk.adjacency.keys())
             # TODO: need to consider different times in the future
-            for postchunk in list(self.chunks.values()):#+list(self.variables.values()): #latestdescedents
-                v_vertical_ = set(postchunk.preadjacency.keys())
-                temp_variable_entailment = v_horizontal_.intersection(v_vertical_)
+            for postchunk in list(self.chunks.values()) +list(self.variables.values()): #latestdescedents
+                v_vertical_ = set(postchunk.preadjacency.keys()).difference(chunk.all_abstraction)
+                temp_variable_entailment = v_horizontal_.intersection(v_vertical_).difference(postchunk.all_abstraction)
                 candidate_variable_entailment = set()
                 freq_c = 0
                 for c in temp_variable_entailment:
@@ -935,16 +950,20 @@ class CG1:
         """Evaluate the encoding complexity of a sequence parsed as chunkrecord
         supportset: the set of chunks/metachunks that is used to parse the sequence
         chunk_record: parsed sequence using the chunks/variables in the supportset
-        Note: complexity is evaluated on the parsing frequencies of individual chunks"""
+        Note: complexity is evaluated on the parsing frequencies of individual chunks
+        TODO: there is a problem of double counting support set"""
         support_p = {}
-        for ckk,ck in supportset.items():
+        for ckk, ck in supportset.items():
             support_p[ckk] = ck.count
         sumcount = sum(list(support_p.values()))
         for ckk in support_p:
             support_p[ckk] = support_p[ckk]/sumcount
         complexity = 0
         for t in list(chunkrecord.keys()):
-            complexity = complexity + -np.log2(support_p[chunkrecord[t][0][0]])
+            try:
+                complexity = complexity + -np.log2(support_p[chunkrecord[t][0][0]])
+            except(KeyError):
+                print(chunkrecord[t][0][0])
 
         print('complexity of the sequence is ', complexity)
         return complexity
