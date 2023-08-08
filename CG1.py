@@ -31,7 +31,7 @@ class CG1:
         self.chunks = {}  # a dictonary with chunk keys and chunk tuples
         self.chunk_probabilities ={}
         self.variables = {}  # variable with their variable object
-        self.variablekeys = {} # used for checking variable duplicates
+        self.variablekeys = set() # set to store the entailing chunks of each variable
         self.concrete_chunks = {}  # no entailment
         self.ancestors = []  # list of chunks without parents
         self.latest_descendents = [] # chunks without children
@@ -110,25 +110,30 @@ class CG1:
         for i in keys:
             if self.variables[i].identificationfreq == 0:
                 deleted_variables.append(i)
-                for c in self.variables[i].entailingchunks:
-                    c.abstraction.remove(self.variables[i])
+                for _acl in self.variables[i].acl:
+                    _acl.cl.pop(self.variables[i])
+                for _acr in self.variables[i].acr:
+                    _acr.cr.pop(self.variables[i])
+
+                entailingchunks = list(self.variables[i].entailingchunks.keys())
+                for c in self.variables[i].entailingchunks.values():
+                    c.abstraction.pop(i,None)
                     # do not remove entailing chunks first, see what will happen
                 self.variables.pop(i)
+                self.variablekeys.remove(tuple(entailingchunks))
 
         # clean adjacency and preadjacency
         for c in list(self.chunks.values()) + list(self.variables.values()):
             for d in deleted_chunks + deleted_variables:
                 c.adjacency.pop(d, None)
                 c.preadjacency.pop(d, None)
-                c.all_abstraction.pop(d, None)
+                c.all_abstraction.difference_update({d})
                 c.abstraction.pop(d, None)
 
         for c in list(self.variables.values()):
             for d in deleted_chunks:
                 c.chunks.pop(d, None)
                 c.entailingchunks.pop(d, None)
-                c.all_abstraction.pop(d, None)
-                c.abstraction.pop(d, None)
 
         return
 
@@ -223,8 +228,7 @@ class CG1:
         assert len(cl.adjacency) > 0
         assert dt in list(cl.adjacency[cridx].keys())
         N = self.get_N()
-        if N == 0:
-            print('?')
+
         N_transition = self.get_N_transition(dt=dt)
 
         N_min = 3
@@ -437,7 +441,6 @@ class CG1:
         else:
             for varkey, varc in newc.includedvariables.items():
                 self.variables[varkey] = varc
-                self.variablekeys[varc.entailingchunknames] = varc
                 varc.chunks[newc.key] = newc
 
         newc.H = self.H  # initialize height and weight in chunk
@@ -783,7 +786,7 @@ class CG1:
             ck.all_abstraction.add(v.key)
             return
         else: #ck is a variable
-            for cck in ck.entailingchunks:
+            for cck in ck.entailingchunks.values():
                 cck.all_abstraction.add(v.key)
                 self.update_allabstraction(cck, v)
 
@@ -791,25 +794,36 @@ class CG1:
         storedvariable = self.check_variable_duplicates(v)
         if storedvariable == None:  # check duplicates
             self.variables[v.key] = v  # update chunking graph
-            self.variablekeys[v.entailingchunknames] = v
             for ck in candidate_variable_entailment:
                 if ck in self.chunks:
                     self.chunks[ck].abstraction[v.key] = v
                 else:
                     self.variables[ck].abstraction[v.key] = v
             self.update_allabstraction(v, v)
+            self.variablekeys.add(tuple(candidate_variable_entailment.keys()))
 
             return v
         else:
             # there is indeed a variable duplication
             # if two variables share the same adjacency and preadjacency, then they are the same variable
+            print('variable duplication with', storedvariable.key, ' and ', v.key)
             if set(v.adjacency.keys()) == set(storedvariable.adjacency.keys()):
                 return storedvariable
             else: # the same variable is identified with different adjacencies
                 storedvariable.merge_two_variables(v)
                 return storedvariable
 
-    def abstraction_learning(self, freq_T = 10):
+    def filter_entailing_variable(self, candidate_variable_entailment):
+        # filter out the variables that are already entailed by other variables to become a variable learning process
+        filtered_candidate_variable_entailment = candidate_variable_entailment.copy()
+        for v in candidate_variable_entailment:
+            if v in self.variables:
+                for ov in candidate_variable_entailment:
+                    if ov in self.variables[v].all_abstraction:
+                        filtered_candidate_variable_entailment.pop(ov)
+        return filtered_candidate_variable_entailment
+
+    def abstraction_learning(self, freq_T = 10, complexity_limit = np.log2(0.05)):
         """
         Create variables from adjacency matrix.
         variable construction: chunks that share common ancestors and common descendents.
@@ -826,23 +840,18 @@ class CG1:
             for postchunk in list(self.chunks.values()) +list(self.variables.values()): #latestdescedents
                 v_vertical_ = set(postchunk.preadjacency.keys()).difference(chunk.all_abstraction)
                 temp_variable_entailment = v_horizontal_.intersection(v_vertical_).difference(postchunk.all_abstraction)
-                candidate_variable_entailment = set()
+                # also eliminate the cyclic connections inside temp_variable_entailment
+                candidate_variable_entailment = {}
                 freq_c = 0
                 for c in temp_variable_entailment:
-                    if chunk.adjacency[c][0] > 0: candidate_variable_entailment.add(c)
+                    if chunk.adjacency[c][0] > 0:
+                        candidate_variable_entailment[c] = self.chunks[c] if c in self.chunks else self.variables[c]
                     freq_c = freq_c + chunk.adjacency[c][0]
                 if len(candidate_variable_entailment) > T and freq_c > freq_T: #register a variable
+                    candidate_variable_entailment = self.filter_entailing_variable(candidate_variable_entailment)
                     print('previous chunk: ', chunk.key, ' post chunk: ', postchunk.key,
                           ' candidate variable entailment ', temp_variable_entailment, 'freq', freq_c)
-
-                    candidate_variables = set()
-                    for candidate in candidate_variable_entailment:
-                        if candidate in self.chunks:
-                            candidate_variables.add(self.chunks[candidate])
-                        else:
-                            candidate_variables.add(self.variables[candidate])
-                    print(candidate_variable_entailment)
-                    v = Variable(candidate_variables)
+                    v = Variable(candidate_variable_entailment)
                     v = self.add_variable(v, candidate_variable_entailment)
                     # create variable chunk: chunk + var + postchunk
                     # need to roll it out when chunk itself contains variables.
@@ -855,6 +864,7 @@ class CG1:
                     var_chunk.count = freq_c
                     varchunks_to_add.append([var_chunk, chunk.key, postchunk.key])
 
+
         for var_chunk, lp, rp in varchunks_to_add:
             self.add_chunk(var_chunk, leftkey=lp, rightkey=rp)
 
@@ -862,16 +872,11 @@ class CG1:
         return
 
     def check_variable_duplicates(self, newv):
-        try:
-            if newv.entailingchunknames in set(list(self.variablekeys.keys())):
-                return self.variablekeys[newv.entailingchunknames] # duplicate
-            else:
-                for v in set(list(self.variablekeys.keys())):
-                    if set(newv.entailingchunknames).issubset(set(v)):
-                        return self.variablekeys[v]
-                return None
-        except(TypeError):
-            print('')
+        for v in list(self.variables.keys()):
+            if set(list(newv.entailingchunks.keys())).issubset(set(list(self.variables[v].entailingchunks.keys()))):
+                return self.variables[v]
+
+        return None
 
 
 
@@ -960,10 +965,8 @@ class CG1:
             support_p[ckk] = support_p[ckk]/sumcount
         complexity = 0
         for t in list(chunkrecord.keys()):
-            try:
-                complexity = complexity + -np.log2(support_p[chunkrecord[t][0][0]])
-            except(KeyError):
-                print(chunkrecord[t][0][0])
+            complexity = complexity + -np.log2(support_p[chunkrecord[t][0][0]])
+
 
         print('complexity of the sequence is ', complexity)
         return complexity

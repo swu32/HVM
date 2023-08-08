@@ -535,7 +535,7 @@ class Variable():
         self.key = self.get_variable_key()
         self.identificationfreq = 1 # how often the variable has been identified as occurring in the sequence (i.e., how often the variable has been used to parse the sequence)
         self.current_content = None # dynamic value, any of the entailing chunks that this variable is taking its value in
-        self.entailingchunknames = self.getentailingchunknames(entailingchunks)
+
         ##################### Relational Parameter ######################
         self.adjacency = self.get_adjacency(entailingchunks)#should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
         self.preadjacency = self.get_preadjacency(entailingchunks)#should the adjaceny specific to individual variable instances, or as the entire variable? entire variable.
@@ -568,9 +568,10 @@ class Variable():
 
         self.count = self.count + v.count
         self.adjacency = self.merge_adjacency(self.adjacency, v.adjacency)
-        self.preadjacency = self.merge_adjacency(self.preadjacency, v.preadjacency)
-        self.entailingchunks = self.entailingchunks.union(v.entailingchunks)
+        self.preadjacency = self.preadjacency | v.preadjacency
+        self.entailingchunks = self.entailingchunks | v.entailingchunks
         self.chunk_probabilities = self.merge_chunk_probabilities(self.chunk_probabilities, v.chunk_probabilities)
+        self.all_abstraction = self.all_abstraction.union(v.all_abstraction)
         return
 
     def merge_adjacency(self, adj1, adj2):
@@ -612,7 +613,7 @@ class Variable():
         """Evalaute the average explanatory volume based on one parsing of such variable"""
         fs = []
         vs = []
-        for ck in entailingchunks:
+        for ck in entailingchunks.values():
             fs.append(ck.count)
             vs.append(ck.volume)
         if sum(fs)>0:
@@ -623,7 +624,7 @@ class Variable():
 
     def get_count(self, entailingchunks):
         count = 0
-        for ck in entailingchunks:
+        for ck in entailingchunks.values():
             count = count + ck.count
         return count
 
@@ -636,7 +637,7 @@ class Variable():
     def get_vertex_location(self, entailingchunks):
         xs = 0
         ys = 0
-        for ck in entailingchunks:
+        for ck in entailingchunks.values():
             x,y = ck.vertex_location
             xs = xs + x
             ys = ys + y
@@ -647,8 +648,7 @@ class Variable():
         adjacency = {}
         dts = set()
         # entailingchunks = set(cg.chunks[item] for item in entailingchunks)
-        entailingchunks = set(entailingchunks)
-        for chunk in entailingchunks:
+        for chunk in entailingchunks.values():
             for cr in chunk.adjacency:
                 if cr in adjacency.keys():
                     for dt in chunk.adjacency[cr]:
@@ -666,8 +666,7 @@ class Variable():
         # I think we might not need it
         preadjacency = {}
         dts = set()
-        entailingchunks = set(entailingchunks)
-        for chunk in entailingchunks:
+        for chunk in entailingchunks.values():
             for cl in chunk.preadjacency:
                 if cl in preadjacency.keys():
                     for dt in chunk.preadjacency[cl]:
@@ -681,25 +680,6 @@ class Variable():
                         preadjacency[cl][dt] = chunk.preadjacency[cl][dt]
         return preadjacency
 
-
-    # def update_transition(self, chunkidx, dt):  # _c_
-    #     # transition can be chunk or variable
-    #     if chunkidx in list(self.adjacency.keys()):
-    #         if dt in list(self.adjacency[chunkidx].keys()):
-    #             self.adjacency[chunkidx][dt] = self.adjacency[chunkidx][dt] + 1
-    #         else:
-    #             self.adjacency[chunkidx][dt] = {}
-    #             self.adjacency[chunkidx][dt] = 1
-    #     else:
-    #         self.adjacency[chunkidx] = {}
-    #         self.adjacency[chunkidx][dt] = 1
-
-    def getentailingchunknames(self, entailingchunks):
-        """get the content of the entailing chunks"""
-        chunknames = set()
-        for ck in entailingchunks:
-            chunknames.add(ck.key)
-        return tuple(list(chunknames))
 
 
     def get_N_transition(self, dt):
@@ -752,19 +732,17 @@ class Variable():
         rc: the encoding cost of distinguishing the entailing variables from its parent variable
          returns the minimal encoding length to distinguish the entailing variables/chunks from this variable
          '''
-        ps = [ck.count for ck in self.entailingchunks]
-        ps = list(filter(lambda x : x != 0, ps))
-        info = [-np.log(c/sum(ps)) for c in ps]
-        return sum(info)
+        freq = np.array([ck.count for ck in self.entailingchunks.values() if ck.count != 0])
+        ps = freq / freq.sum()
+        return -np.sum(np.log2(ps))
 
 
     def get_rep_entropy(self):
         """Obtain the representation entropy of a variable"""
-        freq = [ck.count for ck in self.entailingchunks]
-        freq = list(filter(lambda x: x != 0, freq))
-        ps = np.array([f/sum(freq) for f in freq])
-        return sum(ps*(-np.log2(ps)))
+        freq = np.array([ck.count for ck in self.entailingchunks.values() if ck.count != 0])
+        ps = freq / freq.sum()
+        return -np.sum(ps * np.log2(ps))
 
 
     def get_entailmentcount(self):
-        return sum([ck.count for ck in self.entailingchunks])
+        return sum([ck.count for ck in self.entailingchunks.values()])

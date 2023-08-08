@@ -80,15 +80,14 @@ def parse_sequence(cg, seq, arayseq, seql=1000, candidate_set= set()):
 
 epsilon = 0.0000001
 def parsing(cg, seq, arayseq, nit, arayl=1000, seql=1000, ABS = True):
-    print('parsing')
     '''updates the transition and marginals via parsing the sequence'''
-    if nit == 23:
+    if nit == 20 and ABS:
         print()
     cg.empty_counts()  # always empty the number of counts for a chunking graph before the next parse
     cg, chunkrecord = parse_sequence(cg, seq, arayseq, seql=seql)
     cg.rep_cleaning()
     cg = evaluate_representation(cg, chunkrecord, seql)
-    if nit >= 25:
+    if nit >= 20:
         return cg
     if cg.prev == 'chunking':chunklearnable = False #
         # chunklearnable = cg.learning_data[-1][3] > cg.learning_data[-2][3] + epsilon # trajectory of improvement
@@ -107,14 +106,12 @@ def parsing(cg, seq, arayseq, nit, arayl=1000, seql=1000, ABS = True):
 
 
 def chunking(cg, seq, arayseq, nit, ABS = True):
-    print('chunking')
     nit = nit + 1
     cg, cp = rational_learning(cg, n_update=10)  # rationally learn until loss function do not converge
     return parsing(cg, seq, arayseq, nit,ABS=ABS)  # parse again and update chunks again
 
 
 def abstraction(cg, chunkrecord, seq, arayseq, nit, ABS = True):
-    print('abstraction')
     #nit = nit + 1
     if ABS:
         cg.abstraction_learning()
@@ -1080,7 +1077,7 @@ def check_recursive_match(seqc, matchingcontent, chunk, cg):
             entailingchunksize = []
             maxsize = 0
             maxcontent = None
-            for v in vck.entailingchunks:  # chunks inside a variable
+            for v in vck.entailingchunks.values():  # chunks inside a variable
                 match, content = check_recursive_match(seqc, matchingcontent, v, cg)
                 #print(match, content)
                 entailingchunkmatching.append(match)
@@ -1156,9 +1153,9 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype='full'):  # _c_ful
         max_chunk_content = maxchunk.ordered_content[0]
         seqc = pop_chunk_in_seq(max_chunk_content, seqc, cg)  # pop identified chunks in sequence
     else:
-        print('the matching chunks are')
-        for mc in matching_chunks:
-            print(mc.ordered_content)
+        # print('the matching chunks are')
+        # for mc in matching_chunks:
+        #     print(mc.ordered_content)
 
         eligible_chunks = list(matching_chunks.intersection(candidate_set))
         if maxchunk not in eligible_chunks:
@@ -1166,7 +1163,7 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype='full'):  # _c_ful
             max_chunk_content = maxchunk.ordered_content[0]
         else:
             max_chunk_content = maxchunkcontent
-        print('max chunk content is ', maxchunkcontent)
+        # print('max chunk content is ', maxchunkcontent)
         seqc = pop_chunk_in_seq(max_chunk_content, seqc, cg)  # pop identified chunks in sequence
 
     return maxchunk, seqc, maxl  # return the biggest chunk and the remaining sequence
@@ -1189,13 +1186,14 @@ def updatechunk(chunk, explainchunk, chunk_record, cg, t, maxl=0):
     return explainchunk, cg, chunk_record
 
 
-def identify_one_chunk(cg, seqc, explainchunk, chunk_record, t, candidate_set):  # _c_
-    print('sequence to explain is ', seqc)
+def identify_one_chunk(cg, seqc, explainchunk, chunk_record, t, candidate_set, print = False):  # _c_
     max_chunk, seqc, maxl = identify_biggest_chunk(cg, seqc, candidate_set)  # identify and pop chunks in sequence
-    print('max chunk is ', max_chunk.key, 't is ', t)
     explainchunk, cg, chunk_record = updatechunk(max_chunk, explainchunk, chunk_record, cg, t, maxl=maxl)
-    print(max_chunk.key)
-    print(explainchunk, chunk_record)
+    if print:
+        print('sequence to explain is ', seqc)
+        print('max chunk is ', max_chunk.key, 't is ', t)
+        print(max_chunk.key)
+        print(explainchunk, chunk_record)
     # explainchunk.append((max_chunk_idx, int(cg.chunks[max_chunk_idx].T), list(cg.visible_chunk_list[max_chunk_idx])))
     # chunk_record = updatechunkrecord(chunk_record, max_chunk_idx, int(cg.chunks[max_chunk_idx].T) + t, cg)
     # cg.chunks[max_chunk_idx].update()  # update chunk count among the currently identified chunks
@@ -1274,7 +1272,7 @@ def updatechunkrecord(chunk_record, ckidx, endtime, cg, freq=True):
     return chunk_record
 
 
-def identify_latest_chunks(cg, seq, chunk_record, t, candidate_set):
+def identify_latest_chunks(cg, seq, chunk_record, t, candidate_set, print = False):
     ''' use the biggest explainable chunk to parse the sequence and store chunks in the chunkrecord
         candidate_set: the specified set of variables '''
     # identify biggest chunks that finish at the earliest time point.
@@ -1292,13 +1290,16 @@ def identify_latest_chunks(cg, seq, chunk_record, t, candidate_set):
         while seq_explained == False:
             # find explanations for the upcoming sequence
             # record termination time of each biggest chunk used for explanation
-            print('--------- before identifying one chunk ----------')
-            print('seqc ', seqc, ' t is ', t)
+            if print:
+                print('--------- before identifying one chunk ----------')
+                print('seqc ', seqc, ' t is ', t)
+
             cg, seqc, chunk_record, explainchunk = identify_one_chunk(cg, seqc, explainchunk, chunk_record, t,
                                                                       candidate_set)
             seq_explained = check_seq_explained(seqc)
-            print('--------- after identifying one chunk ----------')
-            print('seqc ', seqc)
+            if print:
+                print('--------- after identifying one chunk ----------')
+                print('seqc ', seqc)
         # chunkrecord: {time: [chunkindex]} stores the finishing time (exclusive) of each chunk
         # decide which are current chunks so that time is appropriately updated
         explainchunk.sort(key=lambda tup: tup[1])  # sort according to finishing time
