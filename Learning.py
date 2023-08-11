@@ -115,9 +115,6 @@ def abstraction(cg, chunkrecord, seq, arayseq, nit, ABS = True):
     #nit = nit + 1
     if ABS:
         cg.abstraction_learning()
-        for c in list(cg.chunks.values()):
-            if c.count < 0:
-                print('')
     #cg = evaluate_representation(cg, chunkrecord)
     return parsing(cg, seq, arayseq, nit, ABS=ABS)  # parse again and update chunks again
 
@@ -149,18 +146,6 @@ def curriculum2():
 
 
 
-def metaparse(cg, chunkrecord, arayseq, nit, chunklearnable=True):
-    # turns out, abstraction can be learned without meta parsing, try removing metaparse in the loop
-    nit = nit + 1
-    cg, chunkrecord = meta_parse_sequence(cg, chunkrecord)
-    for c in list(cg.chunks.values()):
-        if c.count < 0:
-            print('')
-    learnabstraction = True
-    if chunklearnable:
-        chunking(cg, chunkrecord, arayseq, nit)
-    if learnabstraction:
-        abstraction(cg, chunkrecord, arayseq, nit)
 
 
 def hcm_markov_control(arayseq, cg, ABS = True):
@@ -170,6 +155,48 @@ def hcm_markov_control(arayseq, cg, ABS = True):
     seq, seql = convert_sequence(arayseq[:, :, :])  # loaded with the 0th observation
     cg = parsing(cg, seq, arayseq, 0, seql,ABS = ABS) # enter into the state control loop
     return cg
+
+
+
+def hcm_depth_parsing(arayseq, cg):
+    """chunking and abstraction learning structured in the shape of a finite state machine"""
+    seql, H, W = arayseq.shape
+    cg.update_hw(H, W)  # update initial parameters
+    seq, seql = convert_sequence(arayseq[:, :, :])  # loaded with the 0th observation
+
+
+    # first, parse the sequence in the ground level and learn chunks until no more chunks can be learned anymore,
+    # or up to a certain iteration level/complexity limitation, whatever comes first
+    cg, chunkrecord = parsing_and_chunking_at_concrete_level(cg, seq, arayseq, seql=1000, maxit = 4)
+
+    # second, parse the sequence in the abstract level and learn chunks until no more chunks can be learned anymore,
+    cg.abstraction_learning()# learn variables and variable chunks from transition matrix
+    cg, chunkrecord = meta_parse_sequence(cg, chunkrecord)
+
+
+    return cg
+
+
+
+
+
+def parsing_and_chunking_at_concrete_level(cg, seq, arayseq, seql=1000, maxit = 1):
+    '''parse and learn chunks in sequences at a concrete level'''
+    cg.empty_counts()  # always empty the number of counts for a chunking graph before the next parse
+    cg, chunkrecord = parse_sequence(cg, seq, arayseq, seql=seql)
+    nit = 0
+
+    chunklearnable = True
+    while chunklearnable: # learn x new chunks at a time,
+        cg, cp = rational_learning(cg, n_update=10, complexity_limit=-np.log(0.05))  # rationally learn until loss function do not converge
+        cg, chunkrecord = parse_sequence(cg, seq, arayseq, seql=seql)
+        nit = nit + 1
+        if cg.independence_test() == True or nit >=maxit: # or add complexity limit
+            chunklearnable = False
+
+    return cg, chunkrecord
+
+
 
 
 def hcm_rational(arayseq, cg):
@@ -308,43 +335,130 @@ def evaluate_representation(cg, chunkrecord, seql=0):
     return cg
 
 
-def meta_parse_sequence(cg, chunk_record, selected_chunks=[]):
+def meta_parse_sequence(cg, chunk_record):
     ''' based on chunk_record, search upward (from specific to concrete) in the representation tree to find consistent variables
     to explain the sequence.
-        Input:
-            selected_chunks: a subset of chunks used to parse the sequence, when empty, the shallowest var
-        each parse gets the shallowest level of variables
-
+        Input: chunkrecord: the parse
         Can use a while loop to obtain all possible variable representations of the same sequence, the number of chunk
         record would be the depth of the representation graph.
         Each while loop would have a transition probability update, and a set of chunks to learn
 
         Output: a sequence, parsed via the variables that points to the concrete chunks in the chunkrecord
         '''
-    abstract_chunk_record = chunk_record.copy()
+    ts = sorted(list(chunk_record.keys())) # chunk ending time stamps
+    tl = len(ts)
+    abstract_chunk_record = {}# output, identified abstractions
+    cg.empty_counts()# clear out all transitions and marginals for the next parses
+    i = 0
+    while i <= tl: # go through chunkrecord
+        # identify the biggest explaining chunk for the upcoming sequence
+        thisT = ts[i]
+        if chunk_record[thisT][0][0] in cg.chunks:
+            currentchunk = cg.chunks[chunk_record[thisT][0][0]]# do not enclude cg.variables for current chunk
+        else:
+            currentchunk = cg.variables[chunk_record[thisT][0][0]]
+        currentchunks = [currentchunk] + list(currentchunk.abstraction.values()) # what is in the chunkrecord and its immediate abstraction are used as parsing objects
 
-    for t, cks in chunk_record.items():
-        abstract_chunk_record[t] = []
-        current_chunks = set()
-        for ck, count in cks:  # the second entry is frequency, can ignore for now.
-            thischunk = cg.chunks[ck]
-            if len(thischunk.abstraction) > 0:  # the chunk has a corresponding variable
-                var = np.random.choice(
-                    list(thischunk.abstraction.values()))  # sample a variable that points to the current chunk
-                var.count = var.count + 1  # update the variable count
-                abstract_chunk_record[t].append((var.key, var.count))  # update the abstraction chunk record
-                current_chunks.add(var.key)  # update the current identified unit as a variable
+        maxchunk, maxchunkcontent, maxl, maxi = 0, 0, 0, 0
+        for ck in currentchunks: # iterate through current chunks, and the abstractions of the current chunk
+            chunk, chunkcontent, l, i = identify_biggest_meta_chunk(ck, chunk_record, cg, i, ts)  # identify and pop chunks in sequence
 
-            else:  # chunk does not have a corresponding variable
-                abstract_chunk_record[t].append((ck, count))  # update the abstraction record with the chunk
-                current_chunks.add(ck)
-
-        cg = learning_and_update(current_chunks, abstract_chunk_record, cg, t, threshold_chunk=True)
+        cg, abstract_chunk_record = updatechunkabstract(chunk, abstract_chunk_record, cg, t)
+        t = ts[i]
+        # write to abstract chunk record
+        cg = learning_and_update(current_chunks, abstract_chunk_record, cg, t, threshold_chunk=False)
 
     return cg, abstract_chunk_record
 
+def identify_biggest_meta_chunk(thischunk, chunkrecord, cg, i, ts):
+    '''Identify the biggest meta chunk to parse the sequence in one-step higher meta level
+    :param thischunk: the chunk to start parsing with at position i with ending time ts[i]
+    :param i: the index of the sequence that ck ends at
+    :param chunkrecord: the chunk record of the sequence
+    :param cg: the chunk graph
+    :return
+        max_chunk: the biggest meta chunk that is consistent with a sequence that starts with ck
+        maxchunkcontent: the content of the biggest meta chunk, to update the chunk record with
+        maxl: the length of the biggest meta chunk, measured in the unit of chunks
+        i: the index of the sequence that max_chunk ends at
+    the content of the biggest meta chunk, the length of the biggest meta chunk'''
 
-def rational_learning(cg, n_update=10, complexity_limit=-np.log2(0.05)):
+    maxl = 0
+    maxchunk = None
+    max_delta_i = 0
+    currentcandidates = [thischunk] + list(thischunk.abstraction.values())  # start searching from singleton chunks, including the variables
+    matching_chunks = set()  # the set of all chunks which start with thischunk that is consistent with the chunkrecord sequence
+
+    # the best explaining chunk corresponding to this seed
+    c_stars = None
+    while len(currentcandidates) > 0:  # search until the bottom of the parsing tree from abstract to concrete
+        new_c_stars = check_meta_match(chunkrecord, currentcandidates, cg, thischunk, ts, i)
+        currentcandidates = []
+        if len(new_c_stars) >= 1:
+            for c in new_c_stars:
+                matching_chunks.add(c)
+                c.parse = c.parse + 1
+                currentcandidates = currentcandidates + list(c.cl.keys())
+                print()
+            c_stars = new_c_stars
+                #l = sum([len(list(item)) for item in c_stars.ordered_content])
+        else: break # no more match from the left chunk
+
+    # find the biggest matching chunk:
+    for c in c_stars:
+        if len(c.ordered_content) >= maxl:
+            maxchunk = c
+            maxchunkcontent = c.content
+            max_delta_i = len(c.ordered_content)
+            maxl = len(c.ordered_content)
+    # remove chunk from seq
+    i = i + max_delta_i # move to the next parse in chunk record
+    return maxchunk, maxchunkcontent, maxl, i  # return the biggest chunk and the remaining sequence
+
+def check_meta_match(chunkrecord, currentcandidates, cg, thischunk, ts, i):
+    '''check whether any or many of the currentcandidates are matching with the chunkrecord at position i
+    :param chunkrecord: the chunk record of the sequence
+    :param currentcandidates: the current candidates to check whether it is matching with the chunkrecord at position i
+    :param cg: the chunk graph
+    :param thischunk: the chunk to start parsing with at position i with ending time ts[i]
+    :param i: the index of the sequence that ck ends at
+    :param ts: the list of ending time of the chunk record
+
+    :return:
+        match: the best chunk that is consistent with the sequence
+    '''
+    matching_chunks = set()
+    if i >= len(ts): return False, matchingcontent
+
+    for chunk in currentcandidates: # iterate through ordered_content of chunks
+        current_t = ts[i]
+        match = True# iterate through chunk content to check consistency with concrete observation
+        matching_content = []# only when all of the chunk's ordered content matches with chunkrecord, then it is a match
+        for j in range(0, len(chunk.ordered_content)):  # need to add pre-existing components
+            singlecontent = chunk.ordered_content[j]
+            t = ts[i+j]
+
+            if type(singlecontent) == set:# concrete chunks
+                if singlecontent == set(chunkrecord[t][0][0]):  # concrete chunks
+                    matching_content.append(chunkrecord[t][0][0])
+                else:
+                    match = False
+                    break # try the next candidate
+            else: # variable
+                assert type(singlecontent) == str
+                seqkey = chunkrecord[t][0][0]
+                seqchunk = cg.chunks[seqkey]
+                if singlecontent in seqchunk.abstraction or singlecontent == seqkey:
+                    matching_content.append(singlecontent)
+                else:
+                    match = False
+                    break
+        if match:
+            matching_chunks.add(chunk)
+
+    return matching_chunks
+
+def rational_learning(cg, n_update=10, complexity_limit=-np.log2(0.10)):
     """ given a learned representation, update chunks based on rank of joint occurrence frequency and hypothesis tests
             Parameters:
                 n_update: the number of concatinations made based on the pre-existing cg records
@@ -854,28 +968,6 @@ def combinechunks(prev_key, post_key, dt, cg):
                     postchunk.W = post.W
                 return prevchunk.concatinate(postchunk)
 
-            # if t_chunk == l_t_prev and t_chunk == l_t_post and checkequal(prev, post):
-            #     return None# do not chunk a chunk by itself.
-            # else:
-            #     prevcontent = prev.content.copy()
-            #     postcontent = post.content.copy()
-            #     prevchunk = Chunk(list(prevcontent), H=prev.H, W=prev.W)
-            #     prevchunk.T = prev.T
-            #     prevchunk.H = prev.H
-            #     prevchunk.W = prev.W
-            #     post_shift = dt
-            #     newpostcontent = set()
-            #     for msrm in postcontent:
-            #         lmsrm = list(msrm)
-            #         lmsrm[0] = lmsrm[0] + post_shift
-            #         newpostcontent.add(tuple(lmsrm))
-            #     postcontent = newpostcontent
-            #     postchunk = Chunk(list(postcontent), H=post.H, W=post.W)
-            #     postchunk.T = post.T
-            #     postchunk.H = post.H
-            #     postchunk.W = post.W
-            # return prevchunk.concatinate(postchunk)
-
 
 def add_singleton_chunk_to_M(seq, t, cg):
     '''Add the singleton chunk observed at the temporal point t of the seq to the set of chunks M'''
@@ -1091,8 +1183,6 @@ def check_recursive_match(seqc, matchingcontent, chunk, cg):
             else: # find entaillingchunkmatchingcontent with the maximal size
                 match = True
                 matchingcontent = maxcontent
-                #print('matching content is ', matchingcontent)
-                #print(match, matchingcontent)
     return match, matchingcontent
 
 
@@ -1101,26 +1191,16 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype='full'):  # _c_ful
     '''Chunk with a bigger size is priorized to explain the sequence'''
     matchingcontent = []
     if len(candidate_set) == 0: candidate_set = set(cg.chunks.values())
-    #print('sequence with chunks to be identified is ', seqc)
 
     def findmatch(current, seqc):
-        # print('current is ', current)
-        # assert that at least one chunk in current explains seqc
-        # search for variables that match the sequences
         for chunk in current:  # what if there are multiple chunks that satisfies the relation?
             match, matchingcontent = check_recursive_match(seqc, set(), chunk, cg)
-            # if matchingcontent == None:
-            #     print('matching content is none')
             if match:
-                #print('was chunk and matchingcontent returned? ')
                 return chunk, matchingcontent
-            #print('in for loop of findmatch')
-        #print('none none returned???')
         return None, None
 
     chunkidentification = check_chunk_in_seq
     pop_chunk_in_seq = pop_chunk_in_seq_full
-
     if checktype == 'boundary':
         chunkidentification = check_chunk_in_seq_boundary
         pop_chunk_in_seq = pop_chunk_in_seq_boundary
@@ -1136,7 +1216,6 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype='full'):  # _c_ful
         while len(current) > 0:  # search until the bottom of the parsing tree from abstract to concrete
             c_star, c_star_content = findmatch(current, seqc)
             if c_star is not None:
-                #print('c star is ', c_star.ordered_content)
                 matching_chunks.add(c_star)
                 c_star.parse = c_star.parse + 1
                 current = list(c_star.cl.keys())
@@ -1153,17 +1232,12 @@ def identify_biggest_chunk(cg, seqc, candidate_set, checktype='full'):  # _c_ful
         max_chunk_content = maxchunk.ordered_content[0]
         seqc = pop_chunk_in_seq(max_chunk_content, seqc, cg)  # pop identified chunks in sequence
     else:
-        # print('the matching chunks are')
-        # for mc in matching_chunks:
-        #     print(mc.ordered_content)
-
         eligible_chunks = list(matching_chunks.intersection(candidate_set))
         if maxchunk not in eligible_chunks:
             maxchunk = eligible_chunks[-1]
             max_chunk_content = maxchunk.ordered_content[0]
         else:
             max_chunk_content = maxchunkcontent
-        # print('max chunk content is ', maxchunkcontent)
         seqc = pop_chunk_in_seq(max_chunk_content, seqc, cg)  # pop identified chunks in sequence
 
     return maxchunk, seqc, maxl  # return the biggest chunk and the remaining sequence
@@ -1184,6 +1258,20 @@ def updatechunk(chunk, explainchunk, chunk_record, cg, t, maxl=0):
     else: timespan = maxl + t - 1
     chunk_record = updatechunkrecord(chunk_record, chunk.key, timespan, cg)
     return explainchunk, cg, chunk_record
+
+
+def updatechunkabstract(chunk, abstract_chunk_record, cg, endindex, ts):
+    if chunk.key in cg.chunks:cg.chunks[chunk.key].update()  # update chunk count among the currently identified chunks
+    else:cg.variables[chunk.key].update()
+    endtime = ts[endindex] # either endindex or endindex - 1
+    if endtime not in list(abstract_chunk_record.keys()):
+        abstract_chunk_record[endtime] = [(ckidx, cg.chunks[ckidx].count)]
+    else:
+        if ckidx not in abstract_chunk_record[endtime]:  # one chunk can only be identified at one time point. when there are
+            # multiple points that correspond to the same chunk, this chunk is identified as occurring once.
+            chunk_record[endtime].append((ckidx, cg.chunks[ckidx].count))
+    return cg, abstract_chunk_record
+
 
 
 def identify_one_chunk(cg, seqc, explainchunk, chunk_record, t, candidate_set, print = False):  # _c_

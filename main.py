@@ -597,6 +597,27 @@ def test_random_graph_abstraction():
     plot_model_learning_comparison(cghcm, cghvm)
     return
 
+
+def test_depth_parsing():
+
+    with open('sample_abstract_sequence.npy', 'rb') as f:
+        seq = np.load(f)
+    cghcm = CG1(DT=0.1, theta=0.996)
+    cghcm = hcm_depth_parsing(seq, cghcm)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+    return
+
+
+def test_random_graph_abstraction_recursive_learning():
+    # test the process of parsing the sequence with varying depth level
+    with open('sample_abstract_sequence.npy', 'rb') as f:
+        seq = np.load(f)
+
+    cghcm = CG1(DT=0.1, theta=0.996)
+    cghcm = hcm_depth_parsing(seq, cghcm)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+
+    plot_model_learning_comparison(cghcm, cghvm)
+    return
+
 def test_simple_abstraction():
     seq = simple_abstraction_I()
     cg = CG1(DT=0.1, theta=0.996)
@@ -656,11 +677,13 @@ def test_motif_learning_experiment2():
 
 
 def main():
+    test_depth_parsing()
     #seq = abstraction_illustration()
     #simonsaysex2()
     #test_motif_learning_experiment2()
     test_random_graph_abstraction()
-    test_simple_abstraction()
+    test_simple_abstraction()# within which there is an hcm rational
+
     pass
 
 if __name__ == "__main__":
