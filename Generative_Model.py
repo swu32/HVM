@@ -3,6 +3,7 @@ import random
 from Learning import *
 from CG1 import *
 
+
 def initialize(d,cg):
     ''' Add atomic chunks to chunking graph '''
     for i in range(1,d+1):
@@ -28,51 +29,137 @@ def connect_chunks(chunklist):
         if type(ck)== Variable:
             variables = variables | {ck.key: ck}
         else:
-            variables = variables | ck.variables
+            variables = variables | ck.includedvariables
 
-    newchunk = Chunk(([]), variables = variables, ordered_content = list(combined_chunk_content))
+    newchunk = Chunk(([]), includedvariables = variables, ordered_content = list(combined_chunk_content))
     return newchunk
 
 
-def random_abstract_representation_graph(save = True):
+def random_abstract_representation_graph(save = True, alphabet_size = 10, depth = 5, seql = 1000):
     ''' Generate a random abstract representation graph '''
-    d = 5
+    n_chunk_combo_range = [2,3,4,5]
+    n_variable_entailment_range = [2,3,4,5]
+    n_sample = 8000
     cg = CG1()
-    cg = initialize(d,cg)
+    cg = initialize(alphabet_size, cg)
+    seql = seql # length of the sequence subsegment
 
-    for _ in range(10):
+
+    for _ in range(depth):
         RAND = np.random.rand()# create a chunk or a variable with 50% probability
         if RAND > 0.5:# create chunks
-            B = list(cg.chunks.values()) + list(cg.variables.values())# belief set.
-            n_combo = np.random.choice([3,4])
+            B = list(cg.chunks.values()) + list(cg.variables.values()) #belief set.
+            n_combo = np.random.choice(n_chunk_combo_range)
             samples = random.choices(B, k = n_combo)
             while type(samples[0])!=Chunk or type(samples[-1])!=Chunk:
                 samples = random.sample(B, k=n_combo)
-
+            print(' combine existing chunks ')
+            for item in samples:
+                print(item.key)
             newchunk = connect_chunks(samples)
             cg.add_chunk(newchunk)
         else: # create variables
-            B = list(cg.chunks.values())  # belief set.
+            B = list(cg.chunks.values())  # belief set
+            n_combo = np.random.choice(n_variable_entailment_range)
+            samples = random.sample(B, k=n_combo)
+            sampledict = dict(zip([item.key for item in samples], samples))
+            newvariable = Variable(sampledict)
+            cg.add_variable(newvariable,sampledict)
+            print('make new variables')
+            print([item.key for item in samples])
 
-            n_combo = np.random.choice([2,3,4])
-            samples = random.choices(B, k=n_combo)
-            while len(set(samples))<=1:
-                samples = random.sample(B, k=n_combo)
-            newvariable = Variable(samples)
-            cg.add_variable(newvariable, set([item.key for item in samples]))
-        print('check')
+            #cg.add_variable(newvariable, set([item.key for item in samples]))
 
     cg = assign_probabilities(cg)
-    # cg.sample_variable_instances()
-    sampled_seq = cg.sample_chunk(800)
-    seq = convert_chunklist_to_seq(sampled_seq, cg)
+    sampled_seq = cg.sample_chunk(60000)
+    seq, total_length = convert_chunklist_to_seq(sampled_seq, cg, seql=30000)
+
+    #lz_complexity, lz_seql = lzcompression(seq[:seql, :, :])
+
+    # record ground truth metric on complexities and others
+
+    # sc: average sequence complexity per sequence length of 1000
+    sc = sum([-np.log2(cg.chunk_probabilities[name]) for name in sampled_seq])/total_length*seql # calibrated to the sequence length of 1000
+    # re: representation entropy per sequence length of 1000
+    re = cg.calculate_representation_entropy(sampled_seq, gt=True)/total_length*seql
+    # stc: storage costrandom_abstract_representation_graph
+    stc = cg.calculate_storage_cost(gt=True)
+    nc, nv = len(cg.chunks), len(cg.variables)
+    cg.learning_data.append([total_length, float("nan"), cg.calculate_rc(), total_length / len(sampled_seq), sc, re, nc, nv, stc])
+    print('generative model ==================================',)
+    print('parsing length', seql/(total_length/len(sampled_seq)), 'sequence complexity', sc, 'representation complexity ',  cg.calculate_rc(), ' explanatory volume ', total_length / len(sampled_seq),
+     'representation entropy', re, 'n chunks', nc, 'n variables', nv, 'storage cost', stc)
+    #print('lz  =====================================',)
+    #print('lz_seql ', lz_seql, ' lz_complexity ', lz_complexity)
+    np.save('./data/generative_hvm' + ' d = ' + str(depth) + 'sz = ' + str(alphabet_size) + '.npy', np.array(cg.learning_data))
+
     if save:
-        with open('random_abstract_sequence.npy', 'wb') as f:
+        savename = './generative_sequences/random_abstract_sequence_fixed_support_set' + ' d = ' + str(depth) + '.npy'
+        with open(savename, 'wb') as f:
             np.save(f, seq)
 
     return cg, seq
 
-def convert_chunklist_to_seq(sampled_seq, cg, sparse = True):
+
+
+
+def generate_transfer_experiment_sequences(save = True, alphabet_size = 10, depth = 5, seql = 1000):
+    ''' Training Sequence,
+        Then some transfer sequence that shares commonality with the training sequence
+        either from superficial level to an abstract level '''
+
+    n_chunk_combo_range = [2, 3, 4, 5]
+    n_variable_entailment_range = [2, 3, 4, 5]
+    n_sample = 8000
+    cg = CG1()
+    cg = initialize(alphabet_size, cg)
+    seql = seql # length of the sequence subsegment
+
+    for _ in range(depth):
+        RAND = np.random.rand()# create a chunk or a variable with 50% probability
+        if RAND > 0.5:# create chunks
+            B = list(cg.chunks.values()) + list(cg.variables.values()) #belief set.
+            n_combo = np.random.choice(n_chunk_combo_range)
+            samples = random.choices(B, k = n_combo)
+            while type(samples[0])!=Chunk or type(samples[-1])!=Chunk:
+                samples = random.sample(B, k=n_combo)
+            print(' combine existing chunks ')
+            for item in samples:
+                print(item.key)
+            newchunk = connect_chunks(samples)
+            cg.add_chunk(newchunk)
+        else: # create variables
+            B = list(cg.chunks.values())  # belief set
+            n_combo = np.random.choice(n_variable_entailment_range)
+            samples = random.sample(B, k=n_combo)
+            sampledict = dict(zip([item.key for item in samples], samples))
+            newvariable = Variable(sampledict)
+            cg.add_variable(newvariable, sampledict)
+            print('make new variables')
+            print([item.key for item in samples])
+
+    cg = assign_probabilities(cg)
+    sampled_seq = cg.sample_chunk(60000)
+    seq, total_length = convert_chunklist_to_seq(sampled_seq, cg, seql=30000)
+    sc = sum([-np.log2(cg.chunk_probabilities[name]) for name in sampled_seq])/total_length*seql # calibrated to the sequence length of 1000
+    re = cg.calculate_representation_entropy(sampled_seq, gt=True)/total_length*seql
+    stc = cg.calculate_storage_cost(gt=True)
+    nc, nv = len(cg.chunks), len(cg.variables)
+    cg.learning_data.append([total_length, float("nan"), cg.calculate_rc(), total_length / len(sampled_seq), sc, re, nc, nv, stc])
+    print('generative model ==================================',)
+    print('parsing length', seql/(total_length/len(sampled_seq)), 'sequence complexity', sc, 'representation complexity ',  cg.calculate_rc(), ' explanatory volume ', total_length / len(sampled_seq),
+     'representation entropy', re, 'n chunks', nc, 'n variables', nv, 'storage cost', stc)
+    #print('lz  =====================================',)
+    np.save('./data/generative_hvm' + ' d = ' + str(depth) + 'sz = ' + str(alphabet_size) + '.npy', np.array(cg.learning_data))
+
+    if save:
+        savename = './generative_sequences/random_abstract_sequence_fixed_support_set' + ' d = ' + str(depth) + '.npy'
+        with open(savename, 'wb') as f:
+            np.save(f, seq)
+
+    return cg, seq
+
+def convert_chunklist_to_seq(sampled_seq, cg, sparse = True, seql = 1000):
     '''convert a sequence of sampled chunk to a sequence of observations'''
 
     content_list = []
@@ -81,26 +168,28 @@ def convert_chunklist_to_seq(sampled_seq, cg, sparse = True):
         cg.sample_variable_instances() # resample variables in cg again
         full_content = cg.get_concrete_content(chunk)
         content_list.append(full_content)
-    seql = 1000
     seq = np.zeros([seql,1,1])
     t = 0
     if sparse: # insert empty spaces between chunks
         for orderedcontent in content_list:# each is an ordered content
             for chunk in orderedcontent:# each chunk is a set
                 for element in chunk:
-                    if t + element[0]<seql:
-                        seq[t+element[0], element[1], element[2]] = element[3]
+                    try:
+                        if t + element[0]<seql:
+                            seq[t+element[0], element[1], element[2]] = element[3]
+                    except(TypeError):
+                        print()
                 t = t + int(max(np.atleast_2d(np.array(list(chunk)))[:, 0]) + 1)
 
-    return seq
+    return seq, t
 
 def assign_probabilities(cg):
     """Assign random probablities for independent chunks in cg in addition to variables within"""
     ps = dirichlet_flat(len(cg.chunks), sort=False)
     cg.chunk_probabilities = dict(zip(list(cg.chunks.keys()), ps))
     for var in cg.variables.values():
-        ps = dirichlet_flat(len(var.entailingchunknames), sort=False)
-        var.chunk_probabilities = dict(zip(list(var.entailingchunknames), ps))
+        ps = dirichlet_flat(len(set(var.entailingchunks)), sort=False)
+        var.chunk_probabilities = dict(zip(list(var.entailingchunks), ps))
     return cg
 
 
