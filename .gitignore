@@ -13,3 +13,19 @@ node_modules/
 # Ignore all files in the temp directory
 temp/
 
+# ignore testing experimental folders
+venv/
+wikitext-2/
+fmri_timeseries/
+ava_data/
+__pychche__/
+data/
+idea/
+
+.DS_Store
+
+1.txt
+DNA.py
+Hand_made_generative.py
+test_learning.py
+wikitext.py
