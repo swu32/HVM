@@ -1692,7 +1692,7 @@ def save_chunk_record(chunkrecord, cg):
     return
 
 
-def hcm_learning(arayseq, cg, learn=True, abstraction=True):
+def hcm_learning(arayseq, cg, learn=True, abstraction=True, chunk=True):
     '''Sequence is an n-d array
         Note that sequence should not be too long, otherwise subtraction would take a while for the algorithm
         when the learning handle is false, then only parsing, and no chunking will take place '''
@@ -1725,7 +1725,10 @@ def hcm_learning(arayseq, cg, learn=True, abstraction=True):
         seq = Buffer.refactor(seq, dt)
 
         if len(current_chunks_idx) > 0 and learn == True:
-            cg = learning_and_update(current_chunks_idx, chunk_record, cg, Buffer.t, threshold_chunk=True)
+            if chunk == True:
+                cg = learning_and_update(current_chunks_idx, chunk_record, cg, Buffer.t, threshold_chunk=True)
+            else:
+                cg = learning_and_update(current_chunks_idx, chunk_record, cg, Buffer.t, threshold_chunk=False)
             if abstraction:
                 cg = abstraction_update(current_chunks_idx, chunk_record, cg, Buffer.t, freq_T = 3)
         learningtime = time.perf_counter() - currenttime

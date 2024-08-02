@@ -923,6 +923,7 @@ def sequence_complexity_comparison():
     return
 
 
+
 sequence_complexity_comparison()
 
 efficiency_curve_lzw()
