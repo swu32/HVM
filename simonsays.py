@@ -1,4 +1,4 @@
-# code to simulate participants' behavior in Simon Says experiment
+# code to simulate participants' behavior in Simon Says experiment (sequence learning and recall experiment that demands variable transfer)
 import sys
 import numpy as np
 import pandas as pd

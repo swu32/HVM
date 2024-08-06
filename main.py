@@ -11,7 +11,6 @@ import os
 from time import time
 from chunks import *
 from abstraction_test import *
-#from simonsays import *
 
 def measure_KL():
     '''Measurement of kl divergence across learning progress

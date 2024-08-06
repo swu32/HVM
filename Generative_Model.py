@@ -37,9 +37,8 @@ def connect_chunks(chunklist):
 
 def random_abstract_representation_graph(save = True, alphabet_size = 10, depth = 5, seql = 1000):
     ''' Generate a random abstract representation graph '''
-    n_chunk_combo_range = [2,3,4,5]
-    n_variable_entailment_range = [2,3,4,5]
-    n_sample = 8000
+    n_chunk_combo_range = [2, 3, 4, 5]
+    n_variable_entailment_range = [2, 3, 4, 5]
     cg = CG1()
     cg = initialize(alphabet_size, cg)
     seql = seql # length of the sequence subsegment
@@ -94,7 +93,8 @@ def random_abstract_representation_graph(save = True, alphabet_size = 10, depth 
     np.save('./data/generative_hvm' + ' d = ' + str(depth) + 'sz = ' + str(alphabet_size) + '.npy', np.array(cg.learning_data))
 
     if save:
-        savename = './generative_sequences/random_abstract_sequence_fixed_support_set' + ' d = ' + str(depth) + '.npy'
+        savename = './generative_sequences_different_parameters/random_abstract_sequence_a=' + str(a) + '_d=' + str(sz) + '.npy'
+        # savename = './generative_sequences/random_abstract_sequence_fixed_support_set' + ' d = ' + str(depth) + '.npy'
         with open(savename, 'wb') as f:
             np.save(f, seq)
 

@@ -156,7 +156,7 @@ def evaluate_abstraction_advantage(self, abstr_ck):
 
 def evaluate_info(chunk):
     if chunk.entailment == []:# concrete chunks
-        return -np.log(chunk.p)
+        return -np.log2(chunk.p)
     else: # abstraction
         info = 0
         for ck in chunk.entailment:

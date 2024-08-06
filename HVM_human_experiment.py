@@ -7,17 +7,17 @@ from chunks import *
 import seaborn as sns
 
 
-theta = 0.96
-def acc_eval1d(img_seq, gt):
-    """ Compare the accuracy between an imaginary sequence and a ground truth sequence """
-    l = 0
-    for i in range(0, img_seq.shape[0]):
-        if img_seq[i,0,0] == gt[i,0,0]:
-            l = l + 1
-    return l/img_seq.shape[0]
-
-def simonsaysex2():
+def HVM_experiment2(theta = 0.996, save_path = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall.csv', save_keys = False ):
+    theta = theta
     df = pd.read_csv('/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/data.csv')
+
+    def acc_eval1d(img_seq, gt):
+        """ Compare the accuracy between an imaginary sequence and a ground truth sequence """
+        l = 0
+        for i in range(0, img_seq.shape[0]):
+            if img_seq[i, 0, 0] == gt[i, 0, 0]:
+                l = l + 1
+        return l / img_seq.shape[0]
 
     # dataframe that records trialwise accuracy
     dfm = {}  # model dataframe
@@ -51,8 +51,11 @@ def simonsaysex2():
             inst_seq.append(ka[int(seq[i,0,0])-1])
         return inst_seq
 
-
-
+    def calculate_prob(chunk_record, cg):
+        p = 1
+        for key in list(chunk_record.keys()):  # key is the encoding time
+            p = p * cg.chunks[chunk_record[key][0][0]].count / np.sum([item.count for item in list(cg.chunks.values())])
+        return p
 
     for sub in np.unique(list(df['ID'])):
         # initialize chunking part with specified parameters
@@ -72,13 +75,15 @@ def simonsaysex2():
             proj_seq = convert_sequence(list(ins_seq), keyassignment)
             proj_seq = np.array(proj_seq).reshape([-1, 1, 1])
             # enable_abstraction = condition == 'm1'
-            cg, chunkrecord = hcm_learning(proj_seq, cg,learn = True, chunk = True, abstraction=condition == 'm1')  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+            cg, chunkrecord = hcm_learning(proj_seq, cg, abstraction= condition == 'm1')  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+            seq_p = calculate_prob(chunkrecord, cg)
+
             recalled_seq, ps = recall(cg, firstitem=proj_seq[0, 0, 0])
 
             model_recall_seq = convert_sequence_backward_to_key(recalled_seq,keyassignment)
 
             p_seq = np.prod(ps)  # evaluate the probability of a sequence
-            # if condition != 'ind' and sub != 1:
+            p_seq = seq_p
 
             dfm['blockcollect'].append(block)
             dfm['ID'].append(sub)
@@ -100,15 +105,18 @@ def simonsaysex2():
                                 'instructioncollect': ins_list[i],
                                 'correctcollect': correctcollect}, ignore_index=True)
 
+
     dfm = pd.DataFrame.from_dict(dfm)
-    csv_save_directory = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_theta_0_dot_96.csv'
+    csv_save_directory = save_path
     dfm.to_csv(csv_save_directory, index=False, header=True)
-
-
-    dfs_csv_save_directory = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_individualkey_theta_0_dot_96.csv'
-    dfs.to_csv(dfs_csv_save_directory, index=False, header=True)
+    if save_keys:
+        dfs_csv_save_directory = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_individualkey_theta=' + str(theta) + '.csv'
+        dfs.to_csv(dfs_csv_save_directory, index=False, header=True)
     return
 
 
+#
+# simonsaysex2()
+#
+#
 
-simonsaysex2()
