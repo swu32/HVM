@@ -35,66 +35,62 @@ def connect_chunks(chunklist):
     return newchunk
 
 
-def random_abstract_representation_graph(save = True, alphabet_size = 10, depth = 5, seql = 1000):
+def random_abstract_representation_graph(save = True, alphabet_size = 10, depth = 5, seql = 1000, p_variable = 0.5):
     ''' Generate a random abstract representation graph '''
+
+    n_chunk_to_sample = 6000
+    sequence_length = 10000
     n_chunk_combo_range = [2, 3, 4, 5]
     n_variable_entailment_range = [2, 3, 4, 5]
     cg = CG1()
     cg = initialize(alphabet_size, cg)
     seql = seql # length of the sequence subsegment
 
-
     for _ in range(depth):
         RAND = np.random.rand()# create a chunk or a variable with 50% probability
-        if RAND > 0.5:# create chunks
+        if RAND > p_variable: # create chunks
             B = list(cg.chunks.values()) + list(cg.variables.values()) #belief set.
             n_combo = np.random.choice(n_chunk_combo_range)
-            samples = random.choices(B, k = n_combo)
-            while type(samples[0])!=Chunk or type(samples[-1])!=Chunk:
+            samples = random.choices(B, k=n_combo)
+            while type(samples[0])!=Chunk or type(samples[-1]) != Chunk:
                 samples = random.sample(B, k=n_combo)
             print(' combine existing chunks ')
             for item in samples:
                 print(item.key)
             newchunk = connect_chunks(samples)
             cg.add_chunk(newchunk)
-        else: # create variables
-            B = list(cg.chunks.values())  # belief set
+        else: # create variables if RAND <= p_variable
+            B = list(cg.chunks.values())  # variables only entail chunks, they do not entail other variables
             n_combo = np.random.choice(n_variable_entailment_range)
-            samples = random.sample(B, k=n_combo)
+            samples = random.sample(B, k=n_combo) # sample without replacement, the size of B must be bigger than n_combo
             sampledict = dict(zip([item.key for item in samples], samples))
             newvariable = Variable(sampledict)
-            cg.add_variable(newvariable,sampledict)
+            cg.add_variable(newvariable, sampledict)
             print('make new variables')
             print([item.key for item in samples])
 
-            #cg.add_variable(newvariable, set([item.key for item in samples]))
-
     cg = assign_probabilities(cg)
-    sampled_seq = cg.sample_chunk(60000)
-    seq, total_length = convert_chunklist_to_seq(sampled_seq, cg, seql=30000)
-
+    sampled_seq = cg.sample_chunk(n_chunk_to_sample)
+    seq, total_length = convert_chunklist_to_seq(sampled_seq, cg, seql=sequence_length)
     #lz_complexity, lz_seql = lzcompression(seq[:seql, :, :])
-
     # record ground truth metric on complexities and others
-
-    # sc: average sequence complexity per sequence length of 1000
-    sc = sum([-np.log2(cg.chunk_probabilities[name]) for name in sampled_seq])/total_length*seql # calibrated to the sequence length of 1000
-    # re: representation entropy per sequence length of 1000
-    re = cg.calculate_representation_entropy(sampled_seq, gt=True)/total_length*seql
-    # stc: storage costrandom_abstract_representation_graph
-    stc = cg.calculate_storage_cost(gt=True)
+    sc = sum([-np.log2(cg.chunk_probabilities[name]) for name in sampled_seq])/total_length*seql#sc: average sequence complexity per sequence length of 1000
+    re = cg.calculate_representation_entropy(sampled_seq, gt=True)/total_length*seql#re: representation entropy per sequence length of 1000
+    stc = cg.calculate_storage_cost(gt=True)#stc: storage cost
     nc, nv = len(cg.chunks), len(cg.variables)
     cg.learning_data.append([total_length, float("nan"), cg.calculate_rc(), total_length / len(sampled_seq), sc, re, nc, nv, stc])
     print('generative model ==================================',)
     print('parsing length', seql/(total_length/len(sampled_seq)), 'sequence complexity', sc, 'representation complexity ',  cg.calculate_rc(), ' explanatory volume ', total_length / len(sampled_seq),
      'representation entropy', re, 'n chunks', nc, 'n variables', nv, 'storage cost', stc)
-    #print('lz  =====================================',)
-    #print('lz_seql ', lz_seql, ' lz_complexity ', lz_complexity)
-    np.save('./data/generative_hvm' + ' d = ' + str(depth) + 'sz = ' + str(alphabet_size) + '.npy', np.array(cg.learning_data))
 
+
+    #save the generative model
     if save:
-        savename = './generative_sequences_different_parameters/random_abstract_sequence_a=' + str(a) + '_d=' + str(sz) + '.npy'
-        # savename = './generative_sequences/random_abstract_sequence_fixed_support_set' + ' d = ' + str(depth) + '.npy'
+        # save data for the generative model
+        np.save('./data/generative_hvm_a=' + str(alphabet_size) + '_d=' + str(depth) + '_p_variable=' + str(p_variable)+'.npy', np.array(cg.learning_data))
+
+        # save sequence data
+        savename = './generative_sequences_different_parameters/random_abstract_sequence_a='+ str(alphabet_size) + '_d='+ str(depth) + '_p_variable=' + str(p_variable) + '.npy'
         with open(savename, 'wb') as f:
             np.save(f, seq)
 
@@ -161,12 +157,11 @@ def generate_transfer_experiment_sequences(save = True, alphabet_size = 10, dept
 
 def convert_chunklist_to_seq(sampled_seq, cg, sparse = True, seql = 1000):
     '''convert a sequence of sampled chunk to a sequence of observations'''
-
     content_list = []
     for key in sampled_seq:
         chunk = cg.chunks[key]
         cg.sample_variable_instances() # resample variables in cg again
-        full_content = cg.get_concrete_content(chunk)
+        full_content = cg.get_concrete_content(chunk) # a list of set
         content_list.append(full_content)
     seq = np.zeros([seql,1,1])
     t = 0
@@ -179,7 +174,10 @@ def convert_chunklist_to_seq(sampled_seq, cg, sparse = True, seql = 1000):
                             seq[t+element[0], element[1], element[2]] = element[3]
                     except(TypeError):
                         print()
-                t = t + int(max(np.atleast_2d(np.array(list(chunk)))[:, 0]) + 1)
+                try:
+                    t = t + int(max(np.atleast_2d(np.array(list(chunk)))[:, 0]) + 1)
+                except(TypeError):
+                    print()
 
     return seq, t
 

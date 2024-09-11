@@ -194,20 +194,26 @@ class CG1:
             v.empty_counts()
         return
 
-    def get_concrete_content(self, chunk):
+    def get_concrete_content(self, input):
         ''' Obtain the concrete content of a chunk with variable components '''
-        if type(chunk) == set:
-            return list(chunk)
-        else:
+        if type(input) == set:# base case
+            return [input]
+        else:# input is a chunk
             concrete_content = []
-            for ck in chunk.ordered_content:
-                if isinstance(ck, str) and ck in self.variables:
-                    varchunk = self.variables[ck].current_content # access the assigned values for variables
-                    varchunkcontent = self.get_concrete_content(varchunk)
-                    concrete_content = concrete_content + varchunkcontent
-
-                else:
-                    concrete_content.append(ck)
+            if type(input) == Chunk:
+                for ck in input.ordered_content:
+                    if isinstance(ck, str) and ck in self.variables:
+                        varchunk = self.variables[ck].current_content # access the assigned values for variables
+                        for v in varchunk:
+                            v = self.get_concrete_content(v)
+                            concrete_content = concrete_content + v
+                    else:
+                        concrete_content.append(ck)
+            else:# input is a variable
+                varchunk = self.variables[input].current_content  # access the assigned values for variables
+                for v in varchunk:
+                    v = self.get_concrete_content(v)
+                    concrete_content = concrete_content + v
             return concrete_content
 
     def sample_chunk(self, n_sample):
@@ -225,16 +231,19 @@ class CG1:
         for _,v in self.variables.items():
             if not generative_model:
                 v.substantiate_chunk_probabilities()
-            # sampleindex = np.random.choice(np.arange(0,len(v.chunk_probabilities),1), 1, p= [i / sum(list(v.chunk_probabilities.values())) for i in list(v.chunk_probabilities.values())])[0]
+            sampleindex = np.random.choice(np.arange(0,len(v.chunk_probabilities),1), 1, p=[i / sum(list(v.chunk_probabilities.values())) for i in list(v.chunk_probabilities.values())])[0]
             # v.current_content = list(v.chunk_probabilities.keys())[sampleindex]
-            sample = v.sample_content()
-            while type(sample)!= Chunk:
-                sample = v.sample_content()
-            v.current_content = sample.content
-
+            # sample = v.sample_content()
+            # while type(sample)!= Chunk:
+            #     sample = v.sample_content()
+            # v.current_content = sample.content
             # sometimes the randomly chosen chunks can be of the same type
             # v.current_content = list(v.entailingchunks.keys())[sampleindex].ordered_content #a list of sets (in case of concrete element) and strings
-            # v.current_content = v.entailingchunks[sampleindex].ordered_content  # a list of sets (in case of concrete element) and strings
+            try:
+                sampled_key = list(v.entailingchunks.keys())[sampleindex]
+                v.current_content = v.entailingchunks[sampled_key].ordered_content  # a list of sets (in case of concrete element) and strings
+            except(KeyError):
+                print()
         return
 
     def extrapolate_variable(self, chunk):

@@ -596,7 +596,7 @@ class Variable():
         return
 
     def sample_content(self):
-        '''sample one of the entailing chunks as the current content of the variable'''
+        ''' sample one of the entailing chunks as the current content of the variable '''
         counts = list(self.chunk_probabilities.values())
         ps = [c/sum(counts) for c in counts]
         idx = np.random.choice(np.arange(len(list(self.chunk_probabilities.keys()))), 1,

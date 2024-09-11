@@ -13,7 +13,6 @@ from time import time
 from chunks import *
 from abstraction_test import *
 
-plot = False
 
 def lzcompression(array_string):
     # input: string, output: lz evaluation
@@ -56,6 +55,36 @@ def lzcompression(array_string):
     # print(f"Sequence Complexity by LZ: {complexity} bits")
     return complexity, seql, storage
 
+############################# coding efficiency
+def lz_complexity_coding_efficiency(sequence):
+    n_entries_dict = []  # number of entries in the dictionary (excluding overhead)
+    parsed_seql_record = []  # progress in encoding the length of the sequence
+
+    seql = 0  # length of sequence after compression
+    parsed_sequence = []
+    n = len(sequence)
+    phrases = dict()
+    i = 0
+    while i < n:
+        j = i + 1
+        while j <= n:
+            current_phrase = sequence[i:j]
+            if tuple(current_phrase) not in phrases:
+                phrases[tuple(current_phrase)] = 1
+                break
+            else:
+                phrases[tuple(current_phrase)] += 1
+            j += 1
+
+        parsed_sequence.append(tuple(current_phrase))
+        seql = seql + 1  # increment size of the parsed sequence
+        n_entries_dict.append(seql)
+        parsed_seql_record.append(i)
+
+        i = j
+    return n_entries_dict, parsed_seql_record
+
+
 
 def slicer(seq, size):
     """Divide the sequence into chunks of the given size."""
@@ -69,18 +98,6 @@ def tokenize(text):
     tokens = [char for char in text]
     return tokens
 
-
-# load data
-# train on chunking model
-# evaluate preplexity
-
-# Assuming the dataset is downloaded and the file paths are known
-train_path = '/Users/swu/Documents/MouseHCM/train_10M/childes.train'
-
-train_text = read_wikitext_file(train_path)
-
-# Tokenize the text
-train_tokens = tokenize(train_text)
 
 def build_vocabulary(tokens, min_freq=1):
     # Count the occurrence of each word in the dataset
@@ -96,6 +113,42 @@ def build_vocabulary(tokens, min_freq=1):
 
     return vocabulary
 
+
+plot = False
+
+# load data
+# train on chunking model
+# evaluate preplexity
+
+# # Assuming the dataset is downloaded and the file paths are known
+# train_path = '/Users/swu/Documents/MouseHCM/train_10M/childes.train'
+# # train_path = '/Users/swu/Documents/MouseHCM/train_10M/bnc_spoken.train'
+# # train_path = '/Users/swu/Documents/MouseHCM/train_10M/gutenberg.train'
+# # train_path = '/Users/swu/Documents/MouseHCM/train_10M/open_subtitles.train'
+# # train_path = '/Users/swu/Documents/MouseHCM/train_10M/simple_wiki.train'
+# # train_path = '/Users/swu/Documents/MouseHCM/train_10M/switchboard.train'
+import argparse
+
+# Initialize the parser
+parser = argparse.ArgumentParser(description="Script that receives BabyLM's filename")
+
+# Add arguments
+parser.add_argument("-n", "--filename", type=str, help="Filename", required=True)
+
+# Parse the arguments
+args = parser.parse_args()
+
+# Access the arguments
+print(f"Hello, {args.filename}!")
+
+train_path = '/Users/swu/Documents/MouseHCM/train_10M/' + args.filename
+
+
+
+train_text = read_wikitext_file(train_path)
+
+# Tokenize the text
+train_tokens = tokenize(train_text)
 # Build the vocabulary
 vocab = build_vocabulary(train_tokens)
 train_tokens = [vocab[w] for w in train_tokens]
@@ -227,8 +280,9 @@ lz_mean_seq_l = np.mean(datalz_length[:, -1, 0], axis=0)   # average over differ
 sem_seq_l = [calculate_sem(seql / datahcm[:, -1, 3]), calculate_sem(seql / datahvm[:, -1, 3]),
              calculate_sem(datalz_length[:, -1, 0] )]
 
-print('seql: mean [hcm, hvm, lz]', hcm_mean_seq_l,hvm_mean_seq_l,lz_mean_seq_l)
-print('seql: se [hcm, hvm, lz]', sem_seq_l)
+print(f'seql: mean [hcm, hvm, lz] {hcm_mean_seq_l:.2f}, {hvm_mean_seq_l:.2f}, {lz_mean_seq_l:.2f}')
+formatted_list = [f"{x:.2f}" for x in sem_seq_l]
+print('seql: se [hcm, hvm, lz]', formatted_list)
 
 hcm_mean_complexity = np.mean(datahcm[:, -1, 4], axis=0)  # average over different runs
 hvm_mean_complexity = np.mean(datahvm[:, -1, 4], axis=0)  # average over different runs
@@ -237,11 +291,9 @@ sem_complexity = [calculate_sem(datahcm[:, -1, 4]), calculate_sem(datahvm[:, -1,
                   calculate_sem(datalz_complexity[:, -1, 0])]
 
 
-print('complexity: mean [hcm, hvm, lz]', hcm_mean_complexity,hvm_mean_complexity,lz_mean_complexity)
-print('complexity: se [hcm, hvm, lz]', sem_complexity)
-
-
-
+print(f'complexity: mean [hcm, hvm, lz] {hcm_mean_complexity:.2f},{hvm_mean_complexity:.2f},{lz_mean_complexity:.2f}')
+formatted_list = [f"{x:.2f}" for x in sem_complexity]
+print('complexity: se [hcm, hvm, lz]', formatted_list)
 
 # leave entropy out for now
 # hcm_mean_entropy = np.mean(datahcm[:, -1, 5], axis=0)
@@ -275,34 +327,6 @@ if plot:
 
 
 
-############################# coding efficiency
-def lz_complexity_coding_efficiency(sequence):
-    n_entries_dict = []  # number of entries in the dictionary (excluding overhead)
-    parsed_seql_record = []  # progress in encoding the length of the sequence
-
-    seql = 0  # length of sequence after compression
-    parsed_sequence = []
-    n = len(sequence)
-    phrases = dict()
-    i = 0
-    while i < n:
-        j = i + 1
-        while j <= n:
-            current_phrase = sequence[i:j]
-            if tuple(current_phrase) not in phrases:
-                phrases[tuple(current_phrase)] = 1
-                break
-            else:
-                phrases[tuple(current_phrase)] += 1
-            j += 1
-
-        parsed_sequence.append(tuple(current_phrase))
-        seql = seql + 1  # increment size of the parsed sequence
-        n_entries_dict.append(seql)
-        parsed_seql_record.append(i)
-
-        i = j
-    return n_entries_dict, parsed_seql_record
 
 overhead_char = 0
 # Flatten the array to 1D
@@ -341,6 +365,7 @@ sem_coding_efficiency = [calculate_sem(hcm_coding_efficiency), calculate_sem(hvm
 
 
 
-print('coding efficiency: mean [hcm, hvm, lz]', hcm_mean_coding_efficiency,hvm_mean_coding_efficiency,lz_mean_coding_efficiency)
-print('coding efficiency: se [hcm, hvm, lz]', sem_coding_efficiency)
+print(f'coding efficiency: mean [hcm, hvm, lz] {hcm_mean_coding_efficiency:.2f},{hvm_mean_coding_efficiency:.2f},{lz_mean_coding_efficiency:.2f}')
+formatted_list = [f"{x:.2f}" for x in sem_coding_efficiency]
+print('coding efficiency: se [hcm, hvm, lz]', formatted_list)
 

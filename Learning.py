@@ -9,7 +9,7 @@ from buffer import *
 from test_Learning import *
 
 
-def plot_average_model_learning_comparison(datahcm, datahvm, d=None, sz=10, savename = 'modelcomparison.png'):
+def plot_average_model_learning_comparison(datahcm, datahvm, d=None, sz=10, savename = 'modelcomparison.png', gt_load_name = None):
     import matplotlib.pyplot as plt
     import numpy as np
 
@@ -22,8 +22,8 @@ def plot_average_model_learning_comparison(datahcm, datahvm, d=None, sz=10, save
     # Create a figure and subplots with 2 rows and 3 columns
     fig, axs = plt.subplots(2, 4, figsize=(10, 6))
     x = np.cumsum(datahcm[0,:, 0])
-
-    gt = np.load('./data/generative_hvm' + ' d = ' + str(d) + 'sz = ' + str(sz) + '.npy')
+    if gt_load_name!=None:gt = np.load(gt_load_name)
+    else:gt = np.load('./data/generative_hvm' + ' d = ' + str(d) + 'sz = ' + str(sz) + '.npy')
 
 
     for i, ax in enumerate(axs.flat):
