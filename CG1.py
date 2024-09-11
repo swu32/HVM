@@ -1088,10 +1088,11 @@ class CG1:
 
 
     def check_variable_duplicates(self, newv):
+        # if newv.prev is a subset of this variable's orev, and at the same time, nev.post is a subset of this varaible's post
+        # then return self.variables[v], to add the entailing chunks to the existing variable v
         for v in list(self.variables.keys()):
             if set(newv.entailingchunks).issubset(set(self.variables[v].entailingchunks)):
                 return self.variables[v]
-
         return None
 
 

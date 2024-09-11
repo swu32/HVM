@@ -766,6 +766,22 @@ def abstraction_update(current_chunks, chunk_record, cg, t, freq_T = 6):
     freq_T: frequency threshold
     """
     # TODO: another version with more flexible dt
+
+    def create_var_chunk(prev, v, chunk, cg):
+        # create variable chunk: chunk + var + postchunk
+        ordered_content = prev.ordered_content.copy()
+        ordered_content.append(v.key)
+        ordered_content = ordered_content + chunk.ordered_content
+        V = {}
+        V[v.key] = v
+        var_chunk = Chunk(([]), includedvariables=V, ordered_content=ordered_content)
+        var_chunk.count = freq_c
+        prev.cl = cg.check_and_add_to_dict(prev.cl, var_chunk)
+        chunk.cr = cg.check_and_add_to_dict(chunk.cr, var_chunk)
+        var_chunk.acl = cg.check_and_add_to_dict(var_chunk.acl, prev)
+        var_chunk.acr = cg.check_and_add_to_dict(var_chunk.acr, chunk)
+        return var_chunk
+
     varchunks_to_add = []
     T = 3
     n_t = 1
@@ -777,7 +793,6 @@ def abstraction_update(current_chunks, chunk_record, cg, t, freq_T = 6):
             v_vertical_ = set(chunk.preadjacency.keys())
             while d_t <= temporal_length_chunk + n_t and len(
                     chunk_record) > 1:  # looking backward to find, padding length
-
                 # adjacent chunks
                 chunkendtime = t - d_t
                 if chunkendtime in list(chunk_record.keys()) and chunkendtime + temporal_length_chunk != t:  # exclude immediate preceeding chunk before the current chunk
@@ -800,27 +815,30 @@ def abstraction_update(current_chunks, chunk_record, cg, t, freq_T = 6):
                                       ' candidate variable entailment ', temp_variable_entailment, 'freq', freq_c)
                                 candidate_variables = {}
                                 for candidate in candidate_variable_entailment:
-                                    if candidate in cg.chunks:candidate_variables[candidate] = cg.chunks[candidate]
+                                    if candidate in cg.chunks: candidate_variables[candidate] = cg.chunks[candidate]
                                     else: candidate_variables[candidate] = cg.variables[candidate]
 
-                                v = Variable(candidate_variables)
-                                v = cg.add_variable(v, candidate_variable_entailment)
-                                # create variable chunk: chunk + var + postchunk
-                                # need to roll it out when chunk itself contains variables.
-                                ordered_content = prev.ordered_content.copy()
-                                ordered_content.append(v.key)
-                                ordered_content = ordered_content + chunk.ordered_content
-                                V = {}
-                                V[v.key] = v
-                                var_chunk = Chunk(([]), includedvariables=V, ordered_content=ordered_content)
-                                var_chunk.count = freq_c
-                                varchunks_to_add.append(var_chunk)
-                                #############################################
+                                # if the new variable as the same adjacency and the same preadjacency as an old variable, then they are the same variable
+                                # loop over the variables,
+                                # check if the pre, and the post adjacency match,
+                                # update old variable with the new entailment if matches
+                                # if match, don't create new variable or new chunk
 
-                                prev.cl = cg.check_and_add_to_dict(prev.cl, var_chunk)
-                                chunk.cr = cg.check_and_add_to_dict(chunk.cr, var_chunk)
-                                var_chunk.acl = cg.check_and_add_to_dict(var_chunk.acl, prev)
-                                var_chunk.acr = cg.check_and_add_to_dict(var_chunk.acr, chunk)
+                                varexist = False
+                                for v in list(cg.variables.keys()):
+                                    ev = cg.variables[v]
+                                    if prevname in ev.preadjacency and chunkname in ev.adjacency:
+                                        varexist = True
+                                        for k,v in candidate_variables.items():
+                                            if v not in ev.chunk_probabilities and type(v) != Variable:
+                                                ev.chunk_probabilities[v] = 0
+                                                ev.entailingchunks[k] = v
+
+                                if varexist == False:
+                                    v = Variable(candidate_variables)
+                                    v = cg.add_variable(v, candidate_variable_entailment) # returns existing variable if same entailment already exists
+                                    var_chunk = create_var_chunk(prev,v,chunk, cg) # create variable chunk: chunk + var + postchunk
+                                    varchunks_to_add.append(var_chunk)
 
                 d_t = d_t + 1
 
@@ -1247,6 +1265,7 @@ def check_recursive_match(seqc, matchingcontent, chunk, cg, matching_p = 1):
             for v in temp:  # chunks inside a variable
                 if sum(vck.chunk_probabilities.values()) == 0:conditional_p = 1/len(list(vck.chunk_probabilities.values()))
                 else:conditional_p = vck.chunk_probabilities[v]/sum(vck.chunk_probabilities.values())# conditional probability of chunk given variable
+
                 match, content, conditional_match_p = check_recursive_match(seqc, matchingcontent, v, cg, matching_p = conditional_p) # conditional probability of matching
                 entailingchunkmatching.append(match)
                 entaillingchunkmatchingcontent.append(content)
