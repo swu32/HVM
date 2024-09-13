@@ -775,11 +775,10 @@ def efficiency_curve_lzw(d = 20, makeplots = True):
 
     return parsing_seql_record, lzcodingefficiency, hvm_mean_coding_efficiency, hcm_mean_coding_efficiency, gt_coding_efficiency
 
-def trade_off_interplay():
+def trade_off_interplay(d = 30):
     x = []
     y = []
     z = []
-    d = 30
     datahvm = np.load('./data/hvm_fixed_support_set' + ' d = ' + str(d) + '.npy')
     seql = 1000
     representation_complexity = np.mean(datahvm[:, :, 2], axis=0)  # parsed sequence length averaged over different runs
@@ -922,14 +921,11 @@ def sequence_complexity_comparison():
     plt.show()
     return
 
-
+trade_off_interplay(d = 20)
 
 sequence_complexity_comparison()
 
 efficiency_curve_lzw()
-
-
-trade_off_interplay()
 
 ######## Explanatory Volume Per Storage
 

@@ -185,11 +185,11 @@ def evaluate_random_graph_abstraction():
     return
 
 
-def test_random_graph_abstraction(generation = False):
-    depth_increment = [5, 10, 15, 20, 25, ]
+def test_random_graph_abstraction(generation=False):
+    depth_increment = [5, 10, 15, 20, 25, 30, 35]
     if generation:
         for d in depth_increment:
-            random_abstract_representation_graph(save=True, alphabet_size=10, depth=d, seql = 5000)
+            random_abstract_representation_graph(save=True, alphabet_size=10, depth=d, seql = 1000)
 
     # with open('random_abstract_sequence.npy', 'rb') as f:
     #     seq = np.load(f)
@@ -200,7 +200,7 @@ def test_random_graph_abstraction(generation = False):
         slice_sz = 1000
         n_measure = 9
         n_run = 5#int(len(fullseq)/slice_sz)
-        n_iter = 10
+        n_iter = 20
         datahcm = np.empty((n_run, n_iter, n_measure))
         datahvm = np.empty((n_run, n_iter, n_measure))
         i = 0
@@ -208,12 +208,12 @@ def test_random_graph_abstraction(generation = False):
             if i == n_run: break # just do 1 iteration
             cghvm = CG1(DT=0.1, theta=0.996)
             cghvm = hcm_markov_control_1(seq, cghvm, MAXit = n_iter)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+            datahvm[i,:,:] = np.array(cghvm.learning_data)
 
             cghcm = CG1(DT=0.1, theta=0.996)
             cghcm = hcm_markov_control_1(seq, cghcm, ABS=False, MAXit = n_iter)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
-
             datahcm[i,:,:] = np.array(cghcm.learning_data)
-            datahvm[i,:,:] = np.array(cghvm.learning_data)
+
             i = i + 1
         np.save('./data/hcm_fixed_support_set' + ' d = ' + str(sz) + '.npy', datahcm)
         np.save('./data/hvm_fixed_support_set' + ' d = ' + str(sz) + '.npy', datahvm)

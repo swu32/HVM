@@ -132,10 +132,9 @@ def slicer(seq, size):
     """Divide the sequence into chunks of the given size."""
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
-def relative_likelihood_existing_sequence():
+def relative_likelihood_existing_sequence(d = 10):
     # compute abstraction advantage purely based on existing data.
 
-    d  = 10
     datahcm = np.load('./data/hcm_fixed_support_set' + ' d = ' + str(d) + '.npy')
     datahvm = np.load('./data/hvm_fixed_support_set' + ' d = ' + str(d) + '.npy')
     x = np.arange(0, datahcm.shape[1],1)
@@ -146,8 +145,8 @@ def relative_likelihood_existing_sequence():
     hcm_se_complexity = stats.sem(datahcm[:, :, 4], axis=0)
     hvm_se_complexity = stats.sem(datahvm[:, :, 4], axis=0)  # average over different runs
 
-    plt.errorbar(x, hcm_mean_complexity, yerr=hcm_se_complexity, label='HCM', color='orange', linewidth=3, fmt='-o')
-    plt.errorbar(x, hvm_mean_complexity, yerr=hvm_se_complexity, label='HVM', color='blue', linewidth=3, fmt='-o')
+    plt.errorbar(x, hcm_mean_complexity, yerr=hcm_se_complexity, label='HCM', color='#CC5500', linewidth=3, fmt='-o')
+    plt.errorbar(x, hvm_mean_complexity, yerr=hvm_se_complexity, label='HVM', color='royalblue', linewidth=3, fmt='-o')
     plt.xlabel('Level of Abstraction')
     plt.ylabel('Transfer Sequence Likelihood')
     # Show the figure
@@ -251,7 +250,7 @@ def transfer_different_sequence_same_generative_model():
             cghcm = hcm_markov_control_1(seq, cghcm, ABS=False, MAXit=n_iter)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
 
             # testing seq, different sequence from the same generative model, evaluate both models on the testing sequence
-            seq =  fullseq[1000:1000 + slice_sz] # evaluation on the same sequence
+            seq = fullseq[1000:1000 + slice_sz] # evaluation on the same sequence
             cghcm = evaluate_transfer(seq, cghcm)
             cghvm = evaluate_transfer(seq, cghvm)
 
@@ -259,9 +258,8 @@ def transfer_different_sequence_same_generative_model():
             datahvm[i, nit, :] = np.array(cghvm.learning_data[-1])
     comparisonplot(datahcm, datahvm, total_n_iter)
     return
+relative_likelihood_existing_sequence(d= 15)
 transfer_different_sequence_same_generative_model()
-
-relative_likelihood_existing_sequence()
 test_random_graph_abstraction(generation=False)
 
 

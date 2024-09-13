@@ -13,6 +13,27 @@ from time import time
 from chunks import *
 from abstraction_test import *
 
+def calculate_sem(data):
+    """
+    Calculate the standard error of the mean (SEM) for a given array of data.
+
+    Parameters:
+        data (numpy.ndarray): A numpy array containing the data points.
+
+    Returns:
+        float: The standard error of the mean of the data.
+    """
+    # Calculate the standard deviation of the data
+    std_dev = np.std(data, ddof=1)  # ddof=1 provides an unbiased estimator by using N-1 in the denominator
+
+    # Calculate the number of observations in the data
+    n = len(data)
+
+    # Calculate SEM
+    sem = std_dev / np.sqrt(n)
+
+    return sem
+
 
 def lzcompression(array_string):
     # input: string, output: lz evaluation
@@ -94,8 +115,8 @@ def slicer(seq, size):
 
 def tokenize(text):
     # Basic tokenization to split the text into words
-    # tokens = re.findall(r'\b\w+\b', text)
-    tokens = [char for char in text]
+    # tokens = re.findall(r'\b\w+\b', text) # words
+    tokens = [char for char in text] # characters
     return tokens
 
 
@@ -133,7 +154,7 @@ import argparse
 parser = argparse.ArgumentParser(description="Script that receives BabyLM's filename")
 
 # Add arguments
-parser.add_argument("-n", "--filename", type=str, help="Filename", required=True)
+parser.add_argument("-n", "--filename", type=str, help="Filename", default="bnc_spoken.train")
 
 # Parse the arguments
 args = parser.parse_args()
@@ -162,7 +183,7 @@ seqL = 1000
 n_run = 10
 fullseq = train_text[:seqL*n_run]
 slice_sz = 1000
-n_measure = 1  # different model evaluation measures. For LZ, it just measures measure the sequence complexity
+n_measure = 1  # different model evaluation measures. For LZ, it just measures the sequence complexity
 n_iter = 10 # iteration corresponding to the chunking and variable learning models, surrogate measure that is meant to map to the number of iterations in the cognitve models
 datalz_length = np.empty((n_run, n_iter, n_measure))
 sequence_original_length = np.empty((n_run, n_iter, n_measure))
@@ -180,10 +201,10 @@ for seq in slicer(fullseq, slice_sz):  # the same sequence as in
     sequence_original_length[i, :, :] = np.array(len(seq))
     i = i + 1
 
-np.save('./data/babyspeech/lz_seql.npy', datalz_length)
-np.save('./data/babyspeech/lz_complexity.npy', datalz_complexity)
-np.save('./data/babyspeech/lz_storage.npy', datalz_storage)
-np.save('./data/babyspeech/sequence_original_length.npy', sequence_original_length)
+np.save(f'./data/babyspeech/{args.filename}_lz_seql.npy', datalz_length)
+np.save(f'./data/babyspeech/{args.filename}_lz_complexity.npy', datalz_complexity)
+np.save(f'./data/babyspeech/{args.filename}_lz_storage.npy', datalz_storage)
+np.save(f'./data/babyspeech/{args.filename}_sequence_original_length.npy', sequence_original_length)
 
 #################################### Now the hierarchical learning models ############################
 fullseq = np.array(train_tokens).reshape([len(train_tokens), 1, 1])
@@ -207,8 +228,8 @@ for seq in slicer(fullseq, slice_sz):
     datahcm[i,:,:] = np.array(cghcm.learning_data)
     datahvm[i,:,:] = np.array(cghvm.learning_data)
     i = i + 1
-np.save('./data/babyspeech/hcm.npy', datahcm)
-np.save('./data/babyspeech/hvm.npy', datahvm)
+np.save(f'./data/babyspeech/{args.filename}_hcm.npy', datahcm)
+np.save(f'./data/babyspeech/{args.filename}_hvm.npy', datahvm)
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -244,30 +265,7 @@ if plot:
     plt.legend()
     plt.show()
     # save the figure
-    plt.savefig('./data/babyspeech/HCM_HVM_learning_progress_comparison.png')
-
-
-
-def calculate_sem(data):
-    """
-    Calculate the standard error of the mean (SEM) for a given array of data.
-
-    Parameters:
-        data (numpy.ndarray): A numpy array containing the data points.
-
-    Returns:
-        float: The standard error of the mean of the data.
-    """
-    # Calculate the standard deviation of the data
-    std_dev = np.std(data, ddof=1)  # ddof=1 provides an unbiased estimator by using N-1 in the denominator
-
-    # Calculate the number of observations in the data
-    n = len(data)
-
-    # Calculate SEM
-    sem = std_dev / np.sqrt(n)
-
-    return sem
+    plt.savefig(f'./data/babyspeech/{args.filename}_HCM_HVM_learning_progress_comparison.png')
 
 
 #################################### Compare HVM, HCM, and LZ78 on coding efficiency #################################
@@ -277,23 +275,24 @@ seql = 1000
 hcm_mean_seq_l = seql / np.mean(datahcm[:, -1, 3], axis=0)  # at the end of training
 hvm_mean_seq_l = seql / np.mean(datahvm[:, -1, 3], axis=0)  # average over different runs
 lz_mean_seq_l = np.mean(datalz_length[:, -1, 0], axis=0)   # average over different runs
+
+
+hcm_min_seq_l = seql / np.max(datahcm[:, -1, 3], axis=0)  # at the end of training
+hvm_min_seq_l = seql / np.max(datahvm[:, -1, 3], axis=0)  # average over different runs
+lz_min_seq_l = np.max(datalz_length[:, -1, 0], axis=0)   # average over different runs
+
 sem_seq_l = [calculate_sem(seql / datahcm[:, -1, 3]), calculate_sem(seql / datahvm[:, -1, 3]),
              calculate_sem(datalz_length[:, -1, 0] )]
-
-print(f'seql: mean [hcm, hvm, lz] {hcm_mean_seq_l:.2f}, {hvm_mean_seq_l:.2f}, {lz_mean_seq_l:.2f}')
-formatted_list = [f"{x:.2f}" for x in sem_seq_l]
-print('seql: se [hcm, hvm, lz]', formatted_list)
 
 hcm_mean_complexity = np.mean(datahcm[:, -1, 4], axis=0)  # average over different runs
 hvm_mean_complexity = np.mean(datahvm[:, -1, 4], axis=0)  # average over different runs
 lz_mean_complexity = np.mean(datalz_complexity[:, -1, 0], axis=0)  # average over different runs
+
+hcm_min_complexity = np.min(datahcm[:, -1, 4], axis=0)  # average over different runs
+hvm_min_complexity = np.min(datahvm[:, -1, 4], axis=0)  # average over different runs
+lz_min_complexity = np.min(datalz_complexity[:, -1, 0], axis=0)  # average over different runs
 sem_complexity = [calculate_sem(datahcm[:, -1, 4]), calculate_sem(datahvm[:, -1, 4]),
                   calculate_sem(datalz_complexity[:, -1, 0])]
-
-
-print(f'complexity: mean [hcm, hvm, lz] {hcm_mean_complexity:.2f},{hvm_mean_complexity:.2f},{lz_mean_complexity:.2f}')
-formatted_list = [f"{x:.2f}" for x in sem_complexity]
-print('complexity: se [hcm, hvm, lz]', formatted_list)
 
 # leave entropy out for now
 # hcm_mean_entropy = np.mean(datahcm[:, -1, 5], axis=0)
@@ -328,12 +327,13 @@ if plot:
 
 
 
-overhead_char = 0
+
 # Flatten the array to 1D
 # Convert the 1D array to a string of characters
-seqL = 1000
+overhead_char = 0
+seql = 1000
 n_run = 10
-fullseq = train_text[:seqL*n_run]
+fullseq = train_text[:seql*n_run]
 slice_sz = 1000
 n_measure = 1  # different model evaluation measures. For LZ, it just measures measure the sequence complexity
 n_iter = 10 # iteration corresponding to the chunking and variable learning models, surrogate measure that is meant to map to the number of iterations in the cognitve models
@@ -351,13 +351,15 @@ for seq in slicer(fullseq, slice_sz):  # the same sequence as in
     i = i + 1
 
 
-
-hcm_coding_efficiency = datahcm[:, -1, 6]/seqL # this would be an array over different runs
+hcm_coding_efficiency = datahcm[:, -1, 6]/seql # this would be an array over different runs
 hvm_coding_efficiency = datahvm[:, -1, 6]/seql
 hcm_mean_coding_efficiency = np.mean(hcm_coding_efficiency)  # at the end of training
 hvm_mean_coding_efficiency = np.mean(hvm_coding_efficiency)  # average over different runs
 lz_mean_coding_efficiency = np.mean(datalz_compression_efficiency[:, -1, 0])  # average over different runs
 
+hcm_min_coding_efficiency = np.min(hcm_coding_efficiency)  # at the end of training
+hvm_min_coding_efficiency = np.min(hvm_coding_efficiency)  # average over different runs
+lz_min_coding_efficiency = np.min(datalz_compression_efficiency[:, -1, 0])  # average over different runs
 
 sem_coding_efficiency = [calculate_sem(hcm_coding_efficiency), calculate_sem(hvm_coding_efficiency),
                   calculate_sem(datalz_compression_efficiency[:, -1, 0])]
@@ -365,7 +367,20 @@ sem_coding_efficiency = [calculate_sem(hcm_coding_efficiency), calculate_sem(hvm
 
 
 
+
+
+
+print(f'seql: mean [hcm, hvm, lz] {hcm_mean_seq_l:.2f}, {hvm_mean_seq_l:.2f}, {lz_mean_seq_l:.2f}')
+print(f'seql: min [hcm, hvm, lz] {hcm_min_seq_l:.2f}, {hvm_min_seq_l:.2f}, {lz_min_seq_l:.2f}')
+formatted_list = [f"{x:.2f}" for x in sem_seq_l]
+print('seql: se [hcm, hvm, lz]', formatted_list)
+
+print(f'complexity: mean [hcm, hvm, lz] {hcm_mean_complexity:.2f},{hvm_mean_complexity:.2f},{lz_mean_complexity:.2f}')
+formatted_list = [f"{x:.2f}" for x in sem_complexity]
+print('complexity: se [hcm, hvm, lz]', formatted_list)
+print(f'complexity: min [hcm, hvm, lz] {hcm_min_complexity:.2f},{hvm_min_complexity:.2f},{lz_min_complexity:.2f}')
+
 print(f'coding efficiency: mean [hcm, hvm, lz] {hcm_mean_coding_efficiency:.2f},{hvm_mean_coding_efficiency:.2f},{lz_mean_coding_efficiency:.2f}')
 formatted_list = [f"{x:.2f}" for x in sem_coding_efficiency]
 print('coding efficiency: se [hcm, hvm, lz]', formatted_list)
-
+print(f'coding efficiency: min [hcm, hvm, lz] {hcm_min_coding_efficiency:.2f},{hvm_min_coding_efficiency:.2f},{lz_min_coding_efficiency:.2f}')

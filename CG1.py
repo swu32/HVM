@@ -1028,6 +1028,22 @@ class CG1:
 
         return self, candidancy_pairs
 
+    def create_var_chunk(self, prev, v, chunk, freq_c):
+        # create variable chunk: chunk + var + postchunk
+        ordered_content = prev.ordered_content.copy()
+        ordered_content.append(v.key)
+        ordered_content = ordered_content + chunk.ordered_content
+        V = {}
+        V[v.key] = v
+        var_chunk = Chunk(([]), includedvariables=V, ordered_content=ordered_content)
+        var_chunk.count = freq_c
+        var_chunk.T = prev.T + chunk.T + v.T
+        prev.cl = self.check_and_add_to_dict(prev.cl, var_chunk)
+        chunk.cr = self.check_and_add_to_dict(chunk.cr, var_chunk)
+        var_chunk.acl = self.check_and_add_to_dict(var_chunk.acl, prev)
+        var_chunk.acr = self.check_and_add_to_dict(var_chunk.acr, chunk)
+        return var_chunk
+
     def abstraction_learning_correlated_candidancy_pair(self, variable_candidancy_pairs,freq_T = 10):
         """
         Create variables from correlated adjacency pairs that has not been combined into chunks
@@ -1038,14 +1054,14 @@ class CG1:
         """
         prev_idx_set = {item[0][0] for item in variable_candidancy_pairs}
         post_idx_set = {item[0][1] for item in variable_candidancy_pairs}
-        Tmin = 1  # the minimal number of chunks that a variable should entail
-        Tmax = 50 # the maximal number of chunks that a variable should entail
+        Tmin = 1  # the minimal number of chunks that a variable may entail
+        Tmax = 50 # the maximal number of chunks that a variable may entail
         # TODO: another version with more flexible dt
         varchunks_to_add = []
         for prev_idx in prev_idx_set:
             chunk = self.chunks[prev_idx] if prev_idx in self.chunks else self.variables[prev_idx]
             v_horizontal = {tup[0][1] for tup in variable_candidancy_pairs if tup[0][0] == prev_idx}
-            for post_idx in post_idx_set: #latestdescedents
+            for post_idx in post_idx_set: # latestdescedents
                 postchunk = self.chunks[post_idx] if post_idx in self.chunks else self.variables[post_idx]
                 v_vertical = {tup[0][0] for tup in variable_candidancy_pairs if tup[0][1] == post_idx}
                 temp_variable_entailment = v_horizontal.intersection(v_vertical)# .difference(postchunk.all_abstraction)
@@ -1053,29 +1069,35 @@ class CG1:
                 candidate_variable_entailment = {}
                 freq_c = 0
                 for c in temp_variable_entailment:
-                    try:
-                        if chunk.adjacency[c][0] > 0:
+                    if chunk.adjacency[c][0] > 0:
                             candidate_variable_entailment[c] = self.chunks[c] if c in self.chunks else self.variables[c]
-                    except(KeyError):
-                        print('chunk ', c, ' is not in the chunk list')
                     freq_c = freq_c + chunk.adjacency[c][0]
+
                 if len(candidate_variable_entailment) > Tmin and len(candidate_variable_entailment) < Tmax and freq_c > freq_T: #register a variable
                     candidate_variable_entailment = self.filter_entailing_variable(candidate_variable_entailment)
                     print('previous chunk: ', chunk.key, ' post chunk: ', postchunk.key,
                           ' candidate variable entailment ', temp_variable_entailment, 'freq', freq_c)
-                    v = Variable(candidate_variable_entailment)
-                    v = self.add_variable(v, candidate_variable_entailment)
-                    # create variable chunk: chunk + var + postchunk
-                    # need to roll it out when chunk itself contains variables.
-                    ordered_content = chunk.ordered_content.copy()
-                    ordered_content.append(v.key)
-                    ordered_content = ordered_content + postchunk.ordered_content
-                    V = {}
-                    V[v.key] = v
-                    var_chunk = Chunk(([]), includedvariables = V, ordered_content=ordered_content)
-                    var_chunk.count = freq_c
-                    var_chunk.T = chunk.T + postchunk.T + v.T
-                    varchunks_to_add.append([var_chunk, chunk.key, postchunk.key])
+
+                    varexist = False
+                    for v in list(self.variables.keys()):
+                        ev = self.variables[v]
+                        if prev_idx in ev.preadjacency and post_idx in ev.adjacency:
+                            ordered_content = chunk.ordered_content.copy()
+                            ordered_content.append(ev.key)
+                            ordered_content = ordered_content + postchunk.ordered_content
+                            var_chunk = Chunk(([]), includedvariables={ev.key: ev}, ordered_content=ordered_content)
+                            if var_chunk.key in self.chunks:
+                                varexist = True
+                                for k, v in candidate_variable_entailment.items():
+                                    if v not in ev.chunk_probabilities and type(v) != Variable:
+                                        ev.chunk_probabilities[v] = 0
+                                        ev.entailingchunks[k] = v
+
+                    if varexist == False:
+                        v = Variable(candidate_variable_entailment)
+                        v = self.add_variable(v, candidate_variable_entailment)  # returns existing variable if same entailment already exists
+                        var_chunk = self.create_var_chunk(chunk, v, postchunk, freq_c)  # create variable chunk: chunk + var + postchunk
+                        varchunks_to_add.append([var_chunk, chunk.key, postchunk.key])
 
 
         for var_chunk, lp, rp in varchunks_to_add:

@@ -828,11 +828,17 @@ def abstraction_update(current_chunks, chunk_record, cg, t, freq_T = 6):
                                 for v in list(cg.variables.keys()):
                                     ev = cg.variables[v]
                                     if prevname in ev.preadjacency and chunkname in ev.adjacency:
-                                        varexist = True
-                                        for k,v in candidate_variables.items():
-                                            if v not in ev.chunk_probabilities and type(v) != Variable:
-                                                ev.chunk_probabilities[v] = 0
-                                                ev.entailingchunks[k] = v
+                                        # what would the merged chunk look like?
+                                        ordered_content = prev.ordered_content.copy()
+                                        ordered_content.append(ev.key)
+                                        ordered_content = ordered_content + chunk.ordered_content
+                                        var_chunk = Chunk(([]), includedvariables={ev.key:ev}, ordered_content=ordered_content)
+                                        if var_chunk.key in cg.chunks:
+                                            varexist = True
+                                            for k,v in candidate_variables.items():
+                                                if v not in ev.chunk_probabilities and type(v) != Variable:
+                                                    ev.chunk_probabilities[v] = 0
+                                                    ev.entailingchunks[k] = v
 
                                 if varexist == False:
                                     v = Variable(candidate_variables)

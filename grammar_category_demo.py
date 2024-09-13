@@ -32,13 +32,13 @@ def translate_recalled_seq(recalled_seq,decoder):
     return decoded_seq
 
 training_seq = []
-n_iter = 200
+n_iter = 100
 for i in range(0, n_iter):
     s1_train = ['the'] + [str(np.random.choice(list(old_noun.keys())))] + ['.']
     s2_train = ['the'] + [np.random.choice(list(old_noun.keys()))] + ['is '] + [
         np.random.choice(['kissing', 'pushing', 'washing', 'brushing'])] + ['the'] + [
                    np.random.choice(list(old_noun.keys()))] + ['.']
-    s3_train = [np.random.choice(list(old_noun.keys()))] + ['s']
+    s3_train = ['the'] + [np.random.choice(list(old_noun.keys()))] + ['s']
     training_seq += [s1_train, s2_train, s3_train][np.random.choice([0,1,2])]
 
 # calculate before testing: 1. with definitive article: wuggy, toma, peri, gazzer
@@ -69,7 +69,7 @@ for i in range(0, n_iter):
 # plural role
 test_seq_plural = [] # the new noun plays the agent role
 for i in range(0, n_iter):
-    s1_test = [np.random.choice(list(new_noun.keys()))] + ['s']
+    s1_test = ['the'] + [np.random.choice(list(new_noun.keys()))] + ['s']
     test_seq_plural += s1_test
 
 # definitive article
@@ -95,8 +95,8 @@ for j in range(0,4):
     cg = CG1(DT=0.1, theta=0.96)
     cg, chunkrecord = hcm_learning(fullseq, cg,
                                    abstraction=True)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
-    recalled_seq, ps = recall(cg, seql=20, firstitem=fullseq[0, 0, 0])
-    print(translate_recalled_seq(recalled_seq, decoder))
+    # recalled_seq, ps = recall(cg, seql=20, firstitem=fullseq[0, 0, 0])
+    # print(translate_recalled_seq(recalled_seq, decoder))
     ############# Test #################
     test_seq = test_pipeline[t]
     full_seq_test = [vocab[key] for key in test_seq]
@@ -125,9 +125,10 @@ for j in range(0,4):
     hist_matrix[j, 2] = sum(list(ProdArgu.values()))
     hist_matrix[j, 3] = sum(list(PluralMorph.values()))
 
-
+import matplotlib.pyplot as plt
+import seaborn as sns
 # Step 4: Convert to DataFrame
-hist_freq = pd.DataFrame(hist_matrix, columns=['Agent', 'Patient','Definitive Article','Plural Morphology'], index = ['Agent', 'Patient','Definitive Article','Plural Morphology'])
+hist_freq = pd.DataFrame(hist_matrix, columns=['Agent', 'Patient', 'Definitive Article', 'Plural Morphology'], index = ['Agent', 'Patient','Definitive Article','Plural Morphology'])
 
 # Plot the correlation matrix
 plt.figure(figsize=(8, 6))
