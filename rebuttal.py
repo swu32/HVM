@@ -137,12 +137,6 @@ def sequence_complexity_comparison_longer_sequence_length():
     return
 
 
-def convert_generative_model_to_text_file():
-    # load generative data
-
-
-    return
-
 # load generative data
 openpath = './generative_sequences/random_abstract_sequence_fixed_support_set' + ' d = 10.npy'
 with open(openpath, 'rb') as f:

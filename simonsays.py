@@ -79,13 +79,6 @@ def simonsaysex2():
             seq_p = calculate_prob(chunkrecord, cg)
 
             recalled_seq, ps = recall(cg, firstitem=proj_seq[0, 0, 0])
-            if condition == 'm1':
-                if trial == 40:
-                    print()
-                if trial == 41:
-                    print()
-                if trial == 64:
-                    print()
             model_recall_seq = convert_sequence_backward_to_key(recalled_seq, keyassignment)
 
             p_seq = np.prod(ps)  # evaluate the probability of a sequence

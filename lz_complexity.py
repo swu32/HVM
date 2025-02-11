@@ -646,11 +646,10 @@ def eval_lz_encoding_bits_longer_sequences(seql=2000):
             sequence_original_encoding_bits[i, :, :] = np.array(len(seq)*bit_per_symbol)
 
             i = i + 1
-        np.save('./data/lz_encoding_bits_d='+ sz +'_seql=' + str(sequence_length) + '.npy', datalz_encoding_bits)
-        np.save('./data/lz_complexity_d='+ sz +'_seql=' + str(sequence_length) + '.npy', datalz_complexity)
-        np.save('./data/lz_storage_d='+ sz +'_seql=' + str(sequence_length) + '.npy', datalz_storage)
-        np.save('./data/sequence_original_encoding_bits_d='+sz +'_seql=' + str(sequence_length) + '.npy', sequence_original_encoding_bits)
-
+        # np.save('./data/lz_encoding_bits_d='+ sz +'_seql=' + str(sequence_length) + '.npy', datalz_encoding_bits)
+        # np.save('./data/lz_complexity_d='+ sz +'_seql=' + str(sequence_length) + '.npy', datalz_complexity)
+        # np.save('./data/lz_storage_d='+ sz +'_seql=' + str(sequence_length) + '.npy', datalz_storage)
+        # np.save('./data/sequence_original_encoding_bits_d='+sz +'_seql=' + str(sequence_length) + '.npy', sequence_original_encoding_bits)
     return
 
 def eval_lz_size_increment():
@@ -962,9 +961,9 @@ def sequence_complexity_comparison():
 
 
 
-eval_lz_encoding_bits_longer_sequences(seql=4000)
-
-trade_off_interplay(d = 20)
+# eval_lz_encoding_bits_longer_sequences(seql=4000)
+#
+trade_off_interplay(d = 35)
 
 sequence_complexity_comparison()
 
