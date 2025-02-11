@@ -79,27 +79,18 @@ def simonsaysex2():
             seq_p = calculate_prob(chunkrecord, cg)
 
             recalled_seq, ps = recall(cg, firstitem=proj_seq[0, 0, 0])
-
-            model_recall_seq = convert_sequence_backward_to_key(recalled_seq,keyassignment)
+            if condition == 'm1':
+                if trial == 40:
+                    print()
+                if trial == 41:
+                    print()
+                if trial == 64:
+                    print()
+            model_recall_seq = convert_sequence_backward_to_key(recalled_seq, keyassignment)
 
             p_seq = np.prod(ps)  # evaluate the probability of a sequence
             p_seq = seq_p
             # if condition != 'ind' and sub != 1:
-            if trial == 1:
-                print()
-            if trial == 5:
-                print()
-            if trial == 30:
-                print()
-
-            if trial == 40:
-                print()
-
-            if trial == 41:
-                print()
-
-            if trial == 64:
-                print()
 
             dfm['blockcollect'].append(block)
             dfm['ID'].append(sub)
@@ -110,8 +101,7 @@ def simonsaysex2():
 
 
             for i in range(0, 12):
-                if model_recall_seq[i] == ins_list[i]:
-                    correctcollect = 1
+                if model_recall_seq[i] == ins_list[i]:correctcollect = 1
                 else: correctcollect = 0
                 dfs = dfs.append({'ID': sub,
                                 'keyassignment': keyassignment,
@@ -122,11 +112,10 @@ def simonsaysex2():
                                 'correctcollect': correctcollect}, ignore_index=True)
 
     dfm = pd.DataFrame.from_dict(dfm)
-    csv_save_directory = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_3.csv'
+    csv_save_directory = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_4.csv'
     dfm.to_csv(csv_save_directory, index=False, header=True)
 
-
-    dfs_csv_save_directory = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_individualkey_3.csv'
+    dfs_csv_save_directory = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_individualkey_4.csv'
     dfs.to_csv(dfs_csv_save_directory, index=False, header=True)
     return
 

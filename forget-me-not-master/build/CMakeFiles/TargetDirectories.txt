@@ -1,0 +1,3 @@
+/Users/swu/Documents/MouseHCM/HSTC/forget-me-not-master/build/CMakeFiles/fmn.dir
+/Users/swu/Documents/MouseHCM/HSTC/forget-me-not-master/build/CMakeFiles/edit_cache.dir
+/Users/swu/Documents/MouseHCM/HSTC/forget-me-not-master/build/CMakeFiles/rebuild_cache.dir

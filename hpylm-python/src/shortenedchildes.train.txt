@@ -1,0 +1,37 @@
+* C H I : 	 n o . 
+ * M O T : 	 a n d   s i t   d o w n . 
+ * C H I : 	 t h e r e   a   n a p k i n . 
+ * M O T : 	 t h e y   a r e   n a p k i n s   y e s . 
+ * M O T : 	 t u r n   a r o u n d   a n d   f i n i s h   y o u r   l u n c h . 
+ * C O L : 	 I   t h i n k   y o u ' d   b e t t e r   f i n i s h   y o u r   l u n c h   a n d   t h e n   w e ' l l   g o . 
+ * C H I : 	 t a k e   a   n a p . 
+ * M O T : 	 r i g h t . 
+ * C H I : 	 M o m   w h e r e   m y   n e w   b l a n k e t ? 
+ * M O T : 	 y o u r   n e w   c l e a n   b l a n k e t ' s   u p   i n   y o u r   b e d . 
+ * C H I : 	 i n   b e d   s l e e p i n g . 
+ * M O T : 	 i t ' s   n o t   s l e e p i n g . 
+ * M O T : 	 i t ' s   j u s t   l a y i n g   t h e r e . 
+ * C O L : 	 E v e   i s   i t   a   c l e a n   n e w   b l a n k e t ? 
+ * C H I : 	 u p s t a i r s   i n   b e d . 
+ * C O L : 	 c l e a n   n e w   b l a n k e t ? 
+ * C H I : 	 y e a h . 
+ * C O L : 	 n e w   c l e a n   b l a n k e t ? 
+ * C H I : 	 ] [ l a u g h s ] 
+ * C H I : 	 o h   n o . 
+ * M O T : 	 n o   i t ' s   n o t   i n   t h e   l i v i n g   r o o m . 
+ * C H I : 	 n o . 
+ * M O T : 	 n o   w h e r e   i s   i t ? 
+ * C H I : 	 u h   F r a s e r   l i v i n g   r o o m . 
+ * M O T : 	 i n   F r a s e r ' s   l i v i n g   r o o m ? 
+ * M O T : 	 w h e r e   i s   y o u r   b l a n k e t ? 
+ * C H I : 	 u h   i n   C r o m e r   l i v i n g   r o o m . 
+ * M O T : 	 w h a t ' s   i t   d o i n g   i n   C r o m e r ' s   l i v i n g   r o o m . 
+ * M O T : 	 w h o   p u t   i t   t h e r e ? 
+ * M O T : 	 w h o   p u t   y o u r   b l a n k e t   i n   F r a s e r ' s   l i v i n g   r o o m ? 
+ * C H I : 	 o u r   l i v i n g   r o o m . 
+ [ M o t h e r   s a y s   E v e   i s   j u s t   b e g i n n i n g   t o   u s e   " o u r " ] 
+ [ t e l l s   C o l i n   a b o u t   " o u r   c a r " ] 
+ * C H I : 	 g r e e n   a r e . 
+ * M O T : 	 g r e e n   a r e   w h a t ? 
+ * C H I : 	 c a r . 
+ * M O T : 	 g r e e

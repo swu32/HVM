@@ -36,28 +36,29 @@ def read_wikitext_file(filepath):
 
 def tokenize(text):
     # Basic tokenization to split the text into words
+    # tokens = list(text)
     tokens = re.findall(r'\b\w+\b', text)
     return tokens
 
 
-def Wikitext2():
+def text_rep_learning():
     # load data
     # train on chunking model
     # evaluate preplexity
 
     # Assuming the dataset is downloaded and the file paths are known
-    train_path = '/Users/swu/Documents/MouseHCM/HSTC/wikitext-2/wiki.train.txt'
-    valid_path = '/Users/swu/Documents/MouseHCM/HSTC/wikitext-2/wiki.valid.txt'
-    test_path = '/Users/swu/Documents/MouseHCM/HSTC/wikitext-2/wiki.test.txt'
+    train_path = './train_10M/childes.train'
+    #valid_path = '/Users/swu/Documents/MouseHCM/HSTC/wikitext-2/wiki.valid.txt'
+    #test_path = '/Users/swu/Documents/MouseHCM/HSTC/wikitext-2/wiki.test.txt'
 
     train_text = read_wikitext_file(train_path)
-    valid_text = read_wikitext_file(valid_path)
-    test_text = read_wikitext_file(test_path)
+    #valid_text = read_wikitext_file(valid_path)
+    #test_text = read_wikitext_file(test_path)
 
     # Tokenize the text
     train_tokens = tokenize(train_text)
-    valid_tokens = tokenize(valid_text)
-    test_tokens = tokenize(test_text)
+    #valid_tokens = tokenize(valid_text)
+    #test_tokens = tokenize(test_text)
 
     def build_vocabulary(tokens, min_freq=1):
         # Count the occurrence of each word in the dataset
@@ -73,33 +74,8 @@ def Wikitext2():
 
         return vocabulary
 
-    # Build the vocabulary
-    vocab = build_vocabulary(train_tokens)
-    train_tokens = [vocab[w] for w in train_tokens]
-    # Print some information about the dataset and vocabulary
-    print(f"Number of tokens in training data: {len(train_tokens)}")
-    print(f"Size of vocabulary: {len(vocab)}")
-    print("Some example words in vocabulary:", list(vocab.keys())[:20])
-
-
-    fullseq = np.array(train_tokens).reshape([-1, 1, 1])
-    # val_data = np.array(corpus.valid).reshape([-1, 1, 1])
-    # test_data = np.array(corpus.test).reshape([-1, 1, 1])
-
-    slice_sz = 5000
-    n_measure = 9
-    n_iter = int(len(fullseq) / slice_sz)
-    datahvm = np.empty((n_iter, n_measure)) # at the end of learning progress
-    i = 0
-    cghvm = CG1(DT=0.1, theta=0.996)
-    for seq in slicer(fullseq, slice_sz):
-        cghvm = hcm_markov_control(seq, cghvm)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
-        datahvm[i, :] = np.array(cghvm.learning_data[-1])
-        i = i + 1
-
-    # print out learned chunks
-    decoder = {value: key for key, value in vocab.items()}
-    text_file = open("Wikitext_abstraction_learning.txt", "w")
+    def translate_chunks_to_words(contenttuple, decoder):
+        return decoder[contenttuple[3]]
 
     def printchunk(chunk, text_file, level=0):
         for content in chunk.ordered_content:
@@ -114,8 +90,33 @@ def Wikitext2():
                     printchunk(chunk, text_file, level=level + 1)
         return
 
-    def translate_chunks_to_words(contenttuple, decoder):
-        return decoder[contenttuple[3]]
+
+
+    # Build the vocabulary
+    vocab = build_vocabulary(train_tokens)
+    train_tokens = [vocab[w] for w in train_tokens]
+    # Print some information about the dataset and vocabulary
+    print(f"Number of tokens in training data: {len(train_tokens)}")
+    print(f"Size of vocabulary: {len(vocab)}")
+    print("Some example words in vocabulary:", list(vocab.keys())[:20])
+
+    slice_sz = 3000
+    fullseq = np.array(train_tokens).reshape([-1, 1, 1])[:slice_sz,:,:]
+    # val_data = np.array(corpus.valid).reshape([-1, 1, 1])
+    # test_data = np.array(corpus.test).reshape([-1, 1, 1])
+    n_measure = 9
+    n_iter = int(len(fullseq) / slice_sz)
+    datahvm = np.empty((n_iter, n_measure)) # at the end of learning progress
+    i = 0
+    cghvm = CG1(DT=0.1, theta=0.996)
+    for seq in slicer(fullseq, slice_sz):
+        cghvm = hcm_markov_control_1(seq, cghvm, ABS=True, MAXit=20)  # with the rational chunk models, rational_chunk_all_info(seq, cg)
+        datahvm[i, :] = np.array(cghvm.learning_data[-1])
+        i = i + 1
+
+    # print out learned chunks
+    decoder = {value: key for key, value in vocab.items()}
+    text_file = open("Wikitext_abstraction_learning.txt", "w")
 
     for chunk in list(cghvm.chunks.values()):
         if chunk.T > 1:
@@ -123,9 +124,6 @@ def Wikitext2():
             text_file.write('****************\n')
             printchunk(chunk, text_file, level=0)
     text_file.close()
-
-
-
 
     plot_model_learning_progress(datahvm, savename='./data/wikitext.png')
 
@@ -232,4 +230,4 @@ def learn_hunger_game():
     return
 
 
-Wikitext2()
+text_rep_learning()

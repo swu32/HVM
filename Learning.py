@@ -556,7 +556,7 @@ def check_meta_match(chunkrecord, currentcandidates, cg, ts, i):
 
     return matching_chunks, matching_Ts, matching_delta_i
 
-def rational_learning(cg, n_update=10, complexity_limit=-np.log2(0.10)):
+def rational_learning(cg, n_update=30, complexity_limit=-np.log2(0.001)):
     """ given a learned representation, update chunks based on rank of joint occurrence frequency and hypothesis tests
             Parameters:
                 n_update: the number of concatinations made based on the pre-existing cg records
@@ -601,10 +601,10 @@ def rational_learning(cg, n_update=10, complexity_limit=-np.log2(0.10)):
 
     # number of chunk combinations allowed.
     cumcomplexity = 0 #cumulative complexity
-    ratio = 0.1# 0.7 # ER/storage_cost
+    # ratio = 0.1# 0.7 # ER/storage_cost
     for i in range(0, min(n_update, len(candidancy_pairs))):
-        if candidancy_pairs[i][-1]<ratio:
-            break
+        # if candidancy_pairs[i][-1]<ratio:
+        #     break
 
         prev_idx, current_idx, cat, dt = candidancy_pairs[i][0]
         cg.chunking_reorganization(prev_idx, current_idx, cat, dt)

@@ -35,6 +35,7 @@ def connect_chunks(chunklist):
     return newchunk
 
 
+
 def random_abstract_representation_graph(save = True, alphabet_size = 10, depth = 5, seql = 1000, p_variable = 0.5):
     ''' Generate a random abstract representation graph '''
 
@@ -87,10 +88,10 @@ def random_abstract_representation_graph(save = True, alphabet_size = 10, depth 
     #save the generative model
     if save:
         # save data for the generative model
-        np.save('./data/generative_hvm_a=' + str(alphabet_size) + '_d=' + str(depth) + '_p_variable=' + str(p_variable)+'.npy', np.array(cg.learning_data))
+        np.save('./data/generative_hvm_a=' + str(alphabet_size) + '_d=' + str(depth) + '_p_variable=' + str(p_variable)+'_seql=' + str(seql)+'.npy', np.array(cg.learning_data))
 
         # save sequence data
-        savename = './generative_sequences_different_parameters/random_abstract_sequence_a='+ str(alphabet_size) + '_d='+ str(depth) + '_p_variable=' + str(p_variable) + '.npy'
+        savename = './generative_sequences_different_parameters/random_abstract_sequence_a='+ str(alphabet_size) + '_d='+ str(depth) + '_p_variable=' + str(p_variable) +'_seql=' + str(seql) + '.npy'
         with open(savename, 'wb') as f:
             np.save(f, seq)
 
@@ -194,11 +195,6 @@ def assign_probabilities(cg):
 ''''Generates a hierarchical generative model with depth d'''
 def generate_hierarchical_sequence(marginals, s_length=1000):
     # marginals can allso be the learned marginals, in that case this function is used to produce a simulated sequence
-    # spatial or temporal
-    # spatial chunks: chunks that exist only in spatial domain
-    # temporal chunks: chunks that exist only in temporal domain
-    # spatial temporal chunks: chunks that exist both in spatial and temporal domain.
-    # or temporal sequential chunks
 
     not_over = True
     while not_over:
@@ -494,7 +490,7 @@ def calculate_expected_occurrance(chunk12,bagofchunks,M):
             ckfreq[chunk] = ckfreq[chunk] + ckupdate[chunk]
 
     # normalization
-    SUM =np.sum(list(ckfreq.values()))
+    SUM = np.sum(list(ckfreq.values()))
     for chunk in list(ckfreq.keys()):
         ckfreq[chunk] = ckfreq[chunk]/SUM
 

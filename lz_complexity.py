@@ -614,6 +614,45 @@ def eval_lz_encoding_bits(savename = './data/eval_lz_encoding_bit.png'):
     return
 
 
+
+
+
+def eval_lz_encoding_bits_longer_sequences(seql=2000):
+    bit_per_symbol = 12
+    sequence_length = seql
+    size_increment = [30]
+    for sz in size_increment:
+        openpath = './generative_sequences/random_abstract_sequence_fixed_support_set' + ' d = ' + str(sz) + '.npy'
+
+        #openpath = './generative_sequences_different_parameters/random_abstract_sequence_a='+ str(10) + '_d='+ str(sz) + '_p_variable=' + str(0.5) +'_seql=' + str(sequence_length) + '.npy'
+        with open(openpath, 'rb') as f:
+            fullseq = np.load(f)
+        slice_sz = sequence_length
+        n_measure = 1 # just measure the sequence complexity
+        n_iter = int(len(fullseq)/slice_sz)
+        datalz_encoding_bits = np.empty((n_iter, 10, n_measure)) # 10: number of iterations (epoch)
+        sequence_original_encoding_bits = np.empty((n_iter, 10, n_measure))
+        datalz_complexity = np.empty((n_iter, 10, n_measure)) # 10: number of iterations (epoch)
+        datalz_storage = np.empty((n_iter, 10, n_measure))
+
+        i = 0 # in each iteration, use the same data for training 14 number of epoches
+        for seq in slicer(fullseq, slice_sz): # the same sequence as in
+            # lz compression complexity (about constant)
+            complexity, seql, storage = lzcompression(seq)
+            print('seql after compression ', seql)
+            datalz_encoding_bits[i, :, :] = np.array(seql*bit_per_symbol)
+            datalz_complexity[i, :, :] = np.array(complexity)
+            datalz_storage[i,:,:] = np.array(storage)
+            sequence_original_encoding_bits[i, :, :] = np.array(len(seq)*bit_per_symbol)
+
+            i = i + 1
+        np.save('./data/lz_encoding_bits_d='+ sz +'_seql=' + str(sequence_length) + '.npy', datalz_encoding_bits)
+        np.save('./data/lz_complexity_d='+ sz +'_seql=' + str(sequence_length) + '.npy', datalz_complexity)
+        np.save('./data/lz_storage_d='+ sz +'_seql=' + str(sequence_length) + '.npy', datalz_storage)
+        np.save('./data/sequence_original_encoding_bits_d='+sz +'_seql=' + str(sequence_length) + '.npy', sequence_original_encoding_bits)
+
+    return
+
 def eval_lz_size_increment():
     size_increment = [5, 10, 15, 20, 25, 30, 35]
     for sz in size_increment:
@@ -920,6 +959,10 @@ def sequence_complexity_comparison():
     plt.ylabel('Parsing Entropy')
     plt.show()
     return
+
+
+
+eval_lz_encoding_bits_longer_sequences(seql=4000)
 
 trade_off_interplay(d = 20)
 
