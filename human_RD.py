@@ -118,24 +118,7 @@ def simonsaysex2():
 
             model_recall_seq = convert_sequence_backward_to_key(recalled_seq,keyassignment)
 
-            p_seq = np.prod(ps)  # evaluate the probability of a sequence
             p_seq = seq_p
-            # if condition != 'ind' and sub != 1:
-            if trial == 1:
-                print()
-            if trial == 5:
-                print()
-            if trial == 30:
-                print()
-
-            if trial == 40:
-                print()
-
-            if trial == 41:
-                print()
-
-            if trial == 64:
-                print()
 
             dfm['blockcollect'].append(block)
             dfm['ID'].append(sub)

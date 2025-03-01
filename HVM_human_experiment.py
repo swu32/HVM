@@ -7,9 +7,9 @@ from chunks import *
 import seaborn as sns
 
 
-def HVM_experiment2(theta = 0.996, save_path = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall.csv', save_keys = False ):
+def HVM_experiment2(theta = 0.996, save_path = './simulation_data_model_transition_recall.csv', save_keys = False ):
     theta = theta
-    df = pd.read_csv('/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/data.csv')
+    df = pd.read_csv('./data/human_data.csv')
 
     def acc_eval1d(img_seq, gt):
         """ Compare the accuracy between an imaginary sequence and a ground truth sequence """
@@ -110,7 +110,7 @@ def HVM_experiment2(theta = 0.996, save_path = '/Users/swu/Desktop/research/moti
     csv_save_directory = save_path
     dfm.to_csv(csv_save_directory, index=False, header=True)
     if save_keys:
-        dfs_csv_save_directory = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_individualkey_theta=' + str(theta) + '.csv'
+        dfs_csv_save_directory = './simulation_data_model_transition_recall_individualkey_theta=' + str(theta) + '.csv'
         dfs.to_csv(dfs_csv_save_directory, index=False, header=True)
     return
 

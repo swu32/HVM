@@ -181,41 +181,34 @@ def plot_depth_increase_progression(savename = './data/depth_increase_progressio
     hcm = []
     hvm = []
     lz = []
-    nn = []
 
     hcm_se = []
     hvm_se = []
     lz_se = []
-    nn_se = []
 
     x = [1, 10, 20, 30, 40, 50, 60]
 
     for sz in [1, 10, 20, 30, 40, 50, 60]:
         datahcm = np.load('./data/hcm_fixed_support_set' + ' d = ' + str(sz) + '.npy')
         datahvm = np.load('./data/hvm_fixed_support_set' + ' d = ' + str(sz) + '.npy')
-        datann = np.load('./data/nn_fixed_support_set' + ' d = ' + str(sz) + '.npy')
         datalz = np.load('./data/lz_fixed_support_set' + ' d = ' + str(sz) + '.npy')
 
         hcm_mean_complexity = np.mean(datahcm[:, -1, 4], axis=0)# average over different runs
         hvm_mean_complexity = np.mean(datahvm[:, -1, 4], axis=0)# average over different runs
         lz_mean_complexity = np.mean(datalz[:, -1, 0], axis=0)# average over different runs
-        nn_mean_complexity = np.mean(datann[:, -1, 0], axis=0)# average over different runs
 
         # calculate standard error
         hcm_se_complexity = stats.sem(datahcm[:, -1, 4], axis=0)
         hvm_se_complexity = stats.sem(datahvm[:, -1, 4], axis=0)# average over different runs
         lz_se_complexity = stats.sem(datalz[:, -1, 0], axis=0)
-        nn_se_complexity = stats.sem(datann[:, -1, 0], axis=0)# average over different runs
 
         hcm.append(hcm_mean_complexity)
         hvm.append(hvm_mean_complexity)
         lz.append(lz_mean_complexity)
-        nn.append(nn_mean_complexity)
 
         hcm_se.append(hcm_se_complexity)
         hvm_se.append(hvm_se_complexity)
         lz_se.append(lz_se_complexity)
-        nn_se.append(nn_se_complexity)
 
     # Setting a style
     sns.set(style="white")
@@ -226,7 +219,6 @@ def plot_depth_increase_progression(savename = './data/depth_increase_progressio
     plt.errorbar(x, hcm, yerr=hcm_se, label='HCM', color= 'orange', linewidth=3, fmt = '-o')
     plt.errorbar(x, hvm, yerr=hvm_se, label='HVM', color= 'blue', linewidth=3, fmt = '-o')
     plt.errorbar(x, lz, yerr=lz_se, label='LZ', color='gray', linewidth=3, fmt = '-o')
-    plt.errorbar(x, nn, yerr=nn_se, label='NN', color='green', linewidth=3, fmt = '-o')
 
     plt.xlabel('Depth')
     plt.ylabel('Sequence Complexity (bits)')
@@ -783,8 +775,12 @@ def efficiency_curve_lzw(d = 20, makeplots = True):
     n_entries_dict = np.array(n_entries_dict) + overhead_char
     parsed_seql_record = np.array(parsed_seql_record)
     lzcodingefficiency = n_entries_dict/parsed_seql_record
+
+    max_index = max((i for i, val in enumerate(parsed_seql_record) if val < 10000), default=None)
+    min_index = min((i for i, val in enumerate(parsed_seql_record) if val > 1000), default=None)
+
     if makeplots:
-        plt.plot(parsed_seql_record, lzcodingefficiency, '-', color ='#36454F')
+        plt.plot(parsed_seql_record[min_index:max_index], lzcodingefficiency[min_index:max_index], '-', color ='#36454F')
         plt.ylabel('N dictionary entries per sequence unit')
         plt.xlabel('sequence length')
         plt.title('Coding Efficiency')
@@ -805,10 +801,8 @@ def efficiency_curve_lzw(d = 20, makeplots = True):
     if makeplots:
         plt.plot(x, hcm_mean_n_chunk/x, '-', color = '#CC5500')
         plt.plot(x, hvm_mean_n_chunk/x, '-', color = 'royalblue')
-
         plt.yscale('log')
         plt.plot(x, gt_n_chunk/x, '-', color = 'forestgreen')
-
         plt.legend(['LZ78','HCM','HVM','GT'])
 
     return parsing_seql_record, lzcodingefficiency, hvm_mean_coding_efficiency, hcm_mean_coding_efficiency, gt_coding_efficiency
@@ -849,7 +843,7 @@ def trade_off_interplay(d = 30):
     cbar = plt.colorbar(sm, ax=ax)
     cbar.set_label('Entropy')
     ax.set_xlabel('Representation Complexity')
-    ax.set_ylabel('Sequence Length')
+    ax.set_ylabel('Parsing Length')
 
     # Show the plot
     plt.show()
@@ -941,66 +935,12 @@ def sequence_complexity_comparison():
     axes[2].set_ylabel('Sequence Likelihood -logP(S)')
     plt.yscale('linear')
 
-    # Coding efficiency
-    models = ['HCM', 'HVM', 'LZ78', 'GT']
-    seq_complexity = [hcm_mean_complexity, hvm_mean_complexity, lz_mean_complexity, gt_mean_complexity]
-    axes[3].bar(models, seq_complexity, color=['#CC5500', 'royalblue', '#36454F', 'forestgreen'], edgecolor = 'black', yerr = sem_complexity)
-    axes[3].set_xlabel('Models')
-    axes[3].set_ylabel('')
-    plt.yscale('linear')
-
-    # Sequence Complexity
-    models = ['HCM', 'HVM', 'GT']
-    seq_complexity = [hcm_mean_entropy, hvm_mean_entropy, gt_mean_entropy]
-    plt.figure()
-    plt.bar(models, seq_complexity, color='royalblue', edgecolor='black', yerr= sem_seq_entropy)
-    plt.xlabel('Models')
-    plt.ylabel('Parsing Entropy')
-    plt.show()
     return
 
 
-
-# eval_lz_encoding_bits_longer_sequences(seql=4000)
-#
-trade_off_interplay(d = 35)
-
+# Figure 3 abc
 sequence_complexity_comparison()
-
+# Figure 3 d
 efficiency_curve_lzw()
-
-######## Explanatory Volume Per Storage
-
-eval_lz_encoding_bits() # this evaluate both the complexity and the depth
-
-plot_explanatory_volume_per_storage()
-
-######## Evaluate Depth Increase
-
-plot_lz_comparison_complexity()
-
-plot_lz_comparison_seql()
-plot_key_model_comparison(d = 15) # model comparison of the most typical trend
-
-
-
-#plot_depth_hvm_hcm_comparison() # okay this plot is completely weird
-#plot_depth_increase_progression()
-
-
-
-
-######## Evaluate Alphabet Increase
-
-eval_lz_size_increment()
-plot_lz_comparison_seql_alphabet_increase()
-
-plot_alphabet_increase_progression()
-
-
-
-
-
-
-
-
+# Figure 6 b
+trade_off_interplay(d = 35)

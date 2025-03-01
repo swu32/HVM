@@ -6,8 +6,8 @@ import numpy as np
 from Learning import *
 from CG1 import *
 
-def AL_experiment2(theta = 0.996, save_path = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_associative_learning_.csv', save_keys = False):
-    df = pd.read_csv('/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/data.csv')
+def AL_experiment2(theta = 0.996, save_path = './simulation_data_model_transition_recall_associative_learning_.csv', save_keys = False):
+    df = pd.read_csv('./data/human_data.csv')
     dfm = {}  # model dataframe
     dfm['blockcollect'] = []
     dfm['ID'] = []
@@ -108,7 +108,7 @@ def AL_experiment2(theta = 0.996, save_path = '/Users/swu/Desktop/research/motif
     dfm.to_csv(csv_save_directory, index=False, header=True)
 
     if save_keys:
-        dfs_csv_save_directory = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_associative_learning_individualkey_theta=' + str(theta) + '.csv'
+        dfs_csv_save_directory = './simulation_data_model_transition_recall_associative_learning_individualkey_theta=' + str(theta) + '.csv'
         dfs.to_csv(dfs_csv_save_directory, index=False, header=True)
 
     return

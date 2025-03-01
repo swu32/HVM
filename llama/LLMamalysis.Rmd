@@ -1,0 +1,532 @@
+---
+title: "R Notebook R squared comparison across all LLMs (Figure 2 and Figure 10 in paper) "
+output: html_notebook
+
+---
+
+# Experiment 2
+
+```{r}
+library(plyr)
+library("ggpubr")
+
+se<-function(x){sd(x)/sqrt(length(x))}
+
+dat_a<-read.csv('./data/human_data.csv')
+dat_m<-read.csv('./data/simulation_data_model_transition_recall.csv')
+
+dat_m$traincondition<-'ind' # first initialize all training condition to independent
+
+dat_m$traincondition<-'ind' # then add the motif condition
+for(id in unique(dat_m$ID)) {
+  tc <- dat_m[dat_m$ID == id & dat_m$blockcollect == 'train',]$condition[2]
+  dat_m[dat_m$ID == id,]$traincondition<- rep(tc, 64)
+  dat_m[dat_m$ID == id,]$trialcollect<-c(1:40,1:24)
+}
+
+dat_m$complexity<- -log(dat_m$p)
+
+# look at training
+
+dat_a_test <-dat_a[dat_a$blockcollect == 'train' & dat_a$timecollect <= 20000,]
+dat_m_test <-dat_m[dat_m$blockcollect == 'train' & dat_a$timecollect <= 20000,]
+
+da<-ddply(dat_a_test, .(trialcollect,traincondition), summarize, m=mean(timecollect), se=se(timecollect))
+dm<-ddply(dat_m_test, .(trialcollect,traincondition), summarize, m=mean(complexity), se=se(complexity))
+
+dam<-data.frame(cbind(da, dm))
+
+pv3 <- ggscatter(dam,x = 'm.1', y = 'm', color = 'black',size = 'trialcollect',shape = 'traincondition', add = c("reg.line"), conf.int = TRUE, cor.coef = TRUE, cor.method = "spearman", xlab = " Sequence Likelihood (HVM)", ylab = "Recall Time (Human)",  legend.label = c('Group', 'N trial'), font.family = 'sans',font.label = c(18, "sans"), fftheme = theme_pubr(), title = 'Training',  cor.coef.size = 5) +   theme(text = element_text(size=18,  family="sans"), strip.background=element_blank(), legend.key=element_rect(color=NA), aspect.ratio = 1) + 
+labs(size="Trial", shape="Group")
+
+
+pv3
+```
+
+```{r}
+se<-function(x){sd(x)/sqrt(length(x))}
+library(plyr)
+library("ggpubr")
+
+dat_a<-read.csv('./data/human_data.csv')
+dat_m<-read.csv('./data/simulation_data_model_transition_recall.csv')
+
+
+dat_m$traincondition<-'ind' # first initialize all training condition to independent
+
+dat_m$traincondition<-'ind'
+for(id in unique(dat_m$ID)) {
+  tc <- dat_m[dat_m$ID == id & dat_m$blockcollect == 'train',]$condition[2]
+  dat_m[dat_m$ID == id,]$traincondition<- rep(tc, 64)
+  dat_m[dat_m$ID == id,]$trialcollect<-c(1:40,1:24)
+}
+
+dat_m$complexity<- -log(dat_m$p)
+
+# look at training
+
+dat_a_test <-dat_a[dat_a$blockcollect == 'test' & dat_a$timecollect <= 20000,]
+dat_m_test <-dat_m[dat_m$blockcollect == 'test' & dat_a$timecollect <= 20000,]
+
+
+da<-ddply(dat_a_test, .(trialcollect,traincondition), summarize, m=mean(timecollect), se=se(timecollect))
+dm<-ddply(dat_m_test, .(trialcollect,traincondition), summarize, m=mean(complexity), se=se(complexity))
+
+dam<-data.frame(cbind(da, dm))
+
+pv3T <- ggscatter(dam,x = 'm.1', y = 'm', color = 'black',size = 'trialcollect',shape = 'traincondition', add = c("reg.line"), conf.int = TRUE, cor.coef = TRUE, cor.method = "spearman", xlab = " Sequence Complexity", ylab = "Reaction Time (Subject)",  legend.label = c('Group', 'N trial'), font.family = 'sans',font.label = c(18, "sans"), fftheme = theme_pubr(), title = 'Transfer Block',  cor.coef.size = 5) +   theme(text = element_text(size=18,  family="sans"), strip.background=element_blank(), legend.key=element_rect(color=NA), aspect.ratio = 1) + 
+labs(size="Trial", shape="Group")
+
+
+pv3T
+```
+
+Human to models 
+```{r}
+dat_subj<-read.csv('./data/human_data.csv')
+dat_subj$trial<-rep((1:64),length(unique(dat_subj$ID)))
+
+
+empirical_rt<-ddply(dat_subj, .(trial,condition), summarize, m=mean(timecollect))
+
+empirical_rt <- empirical_rt[empirical_rt$trial<=40,]$m
+
+dat_normal<-read.csv('./data/simulation_data_model_transition_recall.csv')
+dat_normal$complexity<- -log(dat_normal$p)
+
+dat_normal$trial<-rep((1:64),length(unique(dat_normal$ID)))
+dat_normal<-ddply(dat_normal, .(trial,condition), summarize, m=mean(complexity))
+
+motif_learning <- dat_normal[dat_normal$trial<=40,]$m
+
+dat_associative_learning<-read.csv('./data/simulation_data_model_transition_recall_associative_learning.csv')
+dat_associative_learning$complexity<- -log(dat_associative_learning$recall_likelihood)
+
+dat_associative_learning$trial<-rep((1:64),length(unique(dat_associative_learning$ID)))
+dat_associative_learning<-ddply(dat_associative_learning, .(trial,condition), summarize, m=mean(complexity))
+
+associative_learning<-dat_associative_learning[dat_associative_learning$trial<=40,]$m
+
+dat_projectional_lesioned<-read.csv('./data/simulation_data_model_transition_recall_leison_variable_motif.csv')
+dat_projectional_lesioned$complexity<- -log(dat_projectional_lesioned$recall_likelihood)
+dat_projectional_lesioned$trial<-rep((1:64),length(unique(dat_projectional_lesioned$ID)))
+dat_projectional_lesioned<-ddply(dat_projectional_lesioned, .(trial,condition), summarize, m=mean(complexity))
+sequence_learning<-dat_projectional_lesioned[dat_projectional_lesioned$trial<=40,]$m
+
+
+dat_gpt2<-read.csv("./data/simulation_data_gpt2.csv")
+dat_gpt2$complexity<- -log(dat_gpt2$p)
+dat_gpt2$trial<-rep((1:64),length(unique(dat_gpt2$ID)))
+dat_gpt2<-ddply(dat_gpt2, .(trial,condition), summarize, m=mean(complexity))
+gpt2_learning<-dat_gpt2[dat_gpt2$trial<=40,]$m
+
+dat_lama7B<-read.csv('./data/Llama-2-7b-chat-hf.csv')
+dat_lama7B$complexity<- -log(dat_lama7B$p)
+dat_lama7B$trial<-rep((1:64),length(unique(dat_lama7B$ID)))
+dat_lama7B<-ddply(dat_lama7B, .(trial,condition), summarize, m=mean(complexity))
+lama7b_learning<-dat_lama7B[dat_lama7B$trial<=40,]$m
+
+
+dat_lama13B<-read.csv('./data/Llama-2-13b-chat-hf.csv')
+dat_lama13B$complexity<- -log(dat_lama13B$p)
+dat_lama13B$trial<-rep((1:64),length(unique(dat_lama13B$ID)))
+dat_lama13B<-ddply(dat_lama13B, .(trial,condition), summarize, m=mean(complexity))
+lama13b_learning<-dat_lama13B[dat_lama13B$trial<=40,]$m
+
+dat_lama70B<-read.csv('./data/Llama-2-70b-chat-hf.csv')
+dat_lama70B$complexity<- -log(dat_lama70B$p)
+dat_lama70B$trial<-rep((1:64),length(unique(dat_lama70B$ID)))
+dat_lama70B<-ddply(dat_lama70B, .(trial,condition), summarize, m=mean(complexity))
+lama70b_learning<-dat_lama70B[dat_lama70B$trial<=40,]$m
+
+dfmc<-data.frame(empirical_rt,motif_learning,associative_learning,sequence_learning, gpt2_learning, lama7b_learning, lama13b_learning,lama70b_learning)
+
+model <- lm(empirical_rt~motif_learning, data=dfmc)
+RSmotiflearning<- summary(model)$r.squared
+
+model <- lm(empirical_rt~associative_learning, data=dfmc)
+RSassociative_learning<- summary(model)$r.squared
+
+model <- lm(empirical_rt~sequence_learning, data=dfmc)
+RSsequence_learning<- summary(model)$r.squared
+
+model <- lm(empirical_rt~gpt2_learning, data=dfmc)
+RSgpt2<- summary(model)$r.squared
+
+model <- lm(empirical_rt~lama7b_learning, data=dfmc)
+RSlama7B<- summary(model)$r.squared
+
+model <- lm(empirical_rt~lama13b_learning, data=dfmc)
+RSlama13B<- summary(model)$r.squared
+
+
+model <- lm(empirical_rt~lama70b_learning, data=dfmc)
+RSlama70B<- summary(model)$r.squared
+
+# Create data
+modelcomparison <- data.frame(
+  name=c("HVM","AL","HCM",'GPT2', 'Llama7B','Llama13B', 'Llama70B') ,  
+  value=c(RSmotiflearning,RSassociative_learning,RSsequence_learning, RSgpt2, RSlama7B, RSlama13B, RSlama70B))
+
+
+#creat plot
+p8 <- ggplot(modelcomparison, aes(y=value, x=reorder(name,+value))) +
+  #show mean
+  stat_summary(fun = mean, geom = "bar", position = "dodge", color='black', width=0.5) + 
+  #points
+  geom_point()+
+  #error bars +/- SEs
+  scale_y_continuous(expand = c(0, 0))+
+  #ylab
+  ylab("R-Squared")+
+  #x-lab
+  xlab("Model")+ 
+  #theme
+  theme_classic()+
+  #theme change
+  ggtitle("Training")+
+
+  # Additional theme settings
+  theme(strip.background = element_blank(), 
+        legend.key = element_rect(color = NA), 
+        legend.position = "none",
+        plot.title = element_text(size = 14),  # Increase plot title font size
+        axis.title = element_text(size = 14),  # Increase axis titles font size
+        axis.text = element_text(size = 14),
+        axis.text.x = element_text()) # Adjust x axis text, if needed
+
+p8
+
+
+```
+
+```{r}
+dat_subj<-read.csv('./data/human_data.csv')
+dat_subj$trial<-rep((1:64),length(unique(dat_subj$ID)))
+
+empirical_rt<-ddply(dat_subj, .(trial,condition), summarize, m=mean(timecollect))
+
+empirical_rt <- empirical_rt[empirical_rt$trial>40,]$m
+
+dat_normal<-read.csv('./data/simulation_data_model_transition_recall.csv')
+dat_normal$complexity<- -log(dat_normal$p)
+
+dat_normal$trial<-rep((1:64),length(unique(dat_normal$ID)))
+dat_normal<-ddply(dat_normal, .(trial,condition), summarize, m=mean(complexity))
+
+motif_learning <- dat_normal[dat_normal$trial>40,]$m
+
+dat_associative_learning<-read.csv('./data/simulation_data_model_transition_recall_associative_learning.csv')
+dat_associative_learning$complexity<- -log(dat_associative_learning$recall_likelihood)
+
+dat_associative_learning$trial<-rep((1:64),length(unique(dat_associative_learning$ID)))
+dat_associative_learning<-ddply(dat_associative_learning, .(trial,condition), summarize, m=mean(complexity))
+
+associative_learning<-dat_associative_learning[dat_associative_learning$trial>40,]$m
+
+dat_projectional_lesioned<-read.csv('./data/simulation_data_model_transition_recall_leison_variable_motif.csv')
+dat_projectional_lesioned$complexity<- -log(dat_projectional_lesioned$recall_likelihood)
+dat_projectional_lesioned$trial<-rep((1:64),length(unique(dat_projectional_lesioned$ID)))
+dat_projectional_lesioned<-ddply(dat_projectional_lesioned, .(trial,condition), summarize, m=mean(complexity))
+sequence_learning<-dat_projectional_lesioned[dat_projectional_lesioned$trial>40,]$m
+
+
+dat_gpt2<-read.csv("./data/simulation_data_gpt2.csv")
+dat_gpt2$complexity<- -log(dat_gpt2$p)
+dat_gpt2$trial<-rep((1:64),length(unique(dat_gpt2$ID)))
+dat_gpt2<-ddply(dat_gpt2, .(trial,condition), summarize, m=mean(complexity))
+gpt2_learning<-dat_gpt2[dat_gpt2$trial>40,]$m
+
+dat_lama7B<-read.csv('./data/Llama-2-7b-chat-hf.csv')
+dat_lama7B$complexity<- -log(dat_lama7B$p)
+dat_lama7B$trial<-rep((1:64),length(unique(dat_lama7B$ID)))
+dat_lama7B<-ddply(dat_lama7B, .(trial,condition), summarize, m=mean(complexity))
+lama7b_learning<-dat_lama7B[dat_lama7B$trial>40,]$m
+
+
+dat_lama13B<-read.csv('./data/Llama-2-13b-chat-hf.csv')
+dat_lama13B$complexity<- -log(dat_lama13B$p)
+dat_lama13B$trial<-rep((1:64),length(unique(dat_lama13B$ID)))
+dat_lama13B<-ddply(dat_lama13B, .(trial,condition), summarize, m=mean(complexity))
+lama13b_learning<-dat_lama13B[dat_lama13B$trial>40,]$m
+
+dat_lama70B<-read.csv('./data/Llama-2-13b-chat-hf.csv')
+dat_lama70B$complexity<- -log(dat_lama70B$p)
+dat_lama70B$trial<-rep((1:64),length(unique(dat_lama70B$ID)))
+dat_lama70B<-ddply(dat_lama70B, .(trial,condition), summarize, m=mean(complexity))
+lama70b_learning<-dat_lama70B[dat_lama70B$trial>40,]$m
+
+dfmc<-data.frame(empirical_rt,motif_learning,associative_learning,sequence_learning, gpt2_learning,lama7b_learning,lama13b_learning)
+
+model <- lm(empirical_rt~motif_learning, data=dfmc)
+RSmotiflearning<- summary(model)$r.squared
+
+model <- lm(empirical_rt~associative_learning, data=dfmc)
+RSassociative_learning<- summary(model)$r.squared
+
+model <- lm(empirical_rt~sequence_learning, data=dfmc)
+RSsequence_learning<- summary(model)$r.squared
+
+model <- lm(empirical_rt~gpt2_learning, data=dfmc)
+RSgpt2<- summary(model)$r.squared
+
+model <- lm(empirical_rt~lama7b_learning, data=dfmc)
+RSlama7B<- summary(model)$r.squared
+
+model <- lm(empirical_rt~lama13b_learning, data=dfmc)
+RSlama13B<- summary(model)$r.squared
+
+model <- lm(empirical_rt~lama70b_learning, data=dfmc)
+RSlama70B<- summary(model)$r.squared
+# Create data
+modelcomparison <- data.frame(
+  name=c("HVM","AL","HCM",'GPT2', 'Llama7B',  'Llama13B','Llama70B') ,  
+  value=c(RSmotiflearning,RSassociative_learning,RSsequence_learning, RSgpt2, RSlama7B, RSlama13B, RSlama70B))
+
+
+#creat plot
+p8 <- ggplot(modelcomparison, aes(y=value, x=reorder(name,+value))) +
+  #show mean
+  stat_summary(fun = mean, geom = "bar", position = "dodge", color='black', width=0.5) + 
+  #points
+  geom_point()+
+  #error bars +/- SEs
+  scale_y_continuous(expand = c(0, 0))+
+  #ylab
+  ylab("R-Squared")+
+  #x-lab
+  xlab("Model")+ 
+  #theme
+  theme_classic()+
+  #theme change
+ggtitle("Transfer") +
+  # Additional theme settings
+  theme(strip.background = element_blank(), 
+        legend.key = element_rect(color = NA), 
+        legend.position = "none",        plot.title = element_text(size = 14),  # Increase plot title font size
+        axis.title = element_text(size = 14),  # Increase axis titles font size
+        axis.text = element_text(size = 14),
+        axis.text.x = element_text()) # Adjust x axis text, if needed
+p8
+
+
+```
+
+
+```{r}
+dat_subj<-read.csv('./data/human_data.csv')
+dat_subj$trial<-rep((1:64),length(unique(dat_subj$ID)))
+
+
+empirical_rt<-ddply(dat_subj, .(trial,condition), summarize, m=mean(timecollect))
+
+empirical_rt <- empirical_rt[empirical_rt$trial<=40,]$m
+
+dat_normal<-read.csv('./data/simulation_data_model_transition_recall.csv')
+dat_normal$complexity<- -log(dat_normal$p)
+
+dat_normal$trial<-rep((1:64),length(unique(dat_normal$ID)))
+dat_normal<-ddply(dat_normal, .(trial,condition), summarize, m=mean(complexity))
+
+motif_learning <- dat_normal[dat_normal$trial<=40,]$m
+
+dat_associative_learning<-read.csv('./data/simulation_data_model_transition_recall_associative_learning.csv')
+dat_associative_learning$complexity<- -log(dat_associative_learning$recall_likelihood)
+
+dat_associative_learning$trial<-rep((1:64),length(unique(dat_associative_learning$ID)))
+dat_associative_learning<-ddply(dat_associative_learning, .(trial,condition), summarize, m=mean(complexity))
+
+associative_learning<-dat_associative_learning[dat_associative_learning$trial<=40,]$m
+
+dat_projectional_lesioned<-read.csv('./data/simulation_data_model_transition_recall_leison_variable_motif.csv')
+dat_projectional_lesioned$complexity<- -log(dat_projectional_lesioned$recall_likelihood)
+dat_projectional_lesioned$trial<-rep((1:64),length(unique(dat_projectional_lesioned$ID)))
+dat_projectional_lesioned<-ddply(dat_projectional_lesioned, .(trial,condition), summarize, m=mean(complexity))
+sequence_learning<-dat_projectional_lesioned[dat_projectional_lesioned$trial<=40,]$m
+
+
+dat_gpt2<-read.csv('/Users/swu/Downloads/gpt2_m1_simulation.csv')
+dat_gpt2$complexity<- -log(dat_gpt2$p)
+dat_gpt2$trial<-rep((1:64),length(unique(dat_gpt2$ID)))
+dat_gpt2<-ddply(dat_gpt2, .(trial,condition), summarize, m=mean(complexity))
+gpt2_learning<-dat_gpt2[dat_gpt2$trial<=40,]$m
+
+
+dat_lama7B<-read.csv('./data/Llama-2-7b-chat-hf.csv')
+dat_lama7B$complexity<- -log(dat_lama7B$p)
+dat_lama7B$trial<-rep((1:64),length(unique(dat_lama7B$ID)))
+dat_lama7B<-ddply(dat_lama7B, .(trial,condition), summarize, m=mean(complexity))
+lama7b_learning<-dat_lama7B[dat_lama7B$trial<=40,]$m
+
+
+dat_lama13B<-read.csv('./data/Llama-2-13b-chat-hf.csv')
+dat_lama13B$complexity<- -log(dat_lama13B$p)
+dat_lama13B$trial<-rep((1:64),length(unique(dat_lama13B$ID)))
+dat_lama13B<-ddply(dat_lama13B, .(trial,condition), summarize, m=mean(complexity))
+lama13b_learning<-dat_lama13B[dat_lama13B$trial<=40,]$m
+
+
+dat_lama70B<-read.csv('./data/Llama-2-13b-chat-hf.csv')
+dat_lama70B$complexity<- -log(dat_lama70B$p)
+dat_lama70B$trial<-rep((1:64),length(unique(dat_lama70B$ID)))
+dat_lama70B<-ddply(dat_lama70B, .(trial,condition), summarize, m=mean(complexity))
+lama70b_learning<-dat_lama70B[dat_lama70B$trial<=40,]$m
+
+
+dfmc<-data.frame(empirical_rt,motif_learning,associative_learning,sequence_learning, lama7b_learning, lama13b_learning,lama70b_learning)
+
+model <- lm(empirical_rt~motif_learning, data=dfmc)
+RSmotiflearning<- summary(model)$r.squared
+
+model <- lm(empirical_rt~associative_learning, data=dfmc)
+RSassociative_learning<- summary(model)$r.squared
+
+model <- lm(empirical_rt~sequence_learning, data=dfmc)
+RSsequence_learning<- summary(model)$r.squared
+
+
+# Create data
+modelcomparison <- data.frame(
+  name=c("HVM","AL","HCM") ,  
+  value=c(RSmotiflearning,RSassociative_learning,RSsequence_learning))
+
+#creat plot
+p8 <- ggplot(modelcomparison, aes(y=value, x=reorder(name,+value))) +
+  #show mean
+  stat_summary(fun = mean, geom = "bar", position = "dodge", color='black', width=0.5) + 
+  #points
+  geom_point()+
+  #error bars +/- SEs
+  scale_y_continuous(expand = c(0, 0))+
+  #ylab
+  ylab("R-Squared")+
+  #x-lab
+  xlab("Model")+ 
+  #theme
+  theme_classic()+
+  #theme change
+
+  # Additional theme settings
+  theme(strip.background = element_blank(), 
+        legend.key = element_rect(color = NA), 
+        aspect.ratio = 1.2,
+        legend.position = "none",
+        plot.title = element_text(size = 20),  # Increase plot title font size
+        axis.title = element_text(size = 20),  # Increase axis titles font size
+        axis.text = element_text(size = 20),
+        axis.text.x = element_text()) +
+
+  ggtitle("Human Training")
+p8
+
+```
+
+```{r}
+
+dat_subj<-read.csv('./data/human_data.csv')
+dat_subj$trial<-rep((1:64),length(unique(dat_subj$ID)))
+
+
+empirical_rt<-ddply(dat_subj, .(trial,condition), summarize, m=mean(timecollect))
+
+empirical_rt <- empirical_rt[empirical_rt$trial>40,]$m
+
+dat_normal<-read.csv('./data/simulation_data_model_transition_recall.csv')
+dat_normal$complexity<- -log(dat_normal$p)
+
+dat_normal$trial<-rep((1:64),length(unique(dat_normal$ID)))
+dat_normal<-ddply(dat_normal, .(trial,condition), summarize, m=mean(complexity))
+
+motif_learning <- dat_normal[dat_normal$trial>40,]$m
+
+dat_associative_learning<-read.csv('./data/simulation_data_model_transition_recall_associative_learning.csv')
+dat_associative_learning$complexity<- -log(dat_associative_learning$recall_likelihood)
+
+dat_associative_learning$trial<-rep((1:64),length(unique(dat_associative_learning$ID)))
+dat_associative_learning<-ddply(dat_associative_learning, .(trial,condition), summarize, m=mean(complexity))
+
+associative_learning<-dat_associative_learning[dat_associative_learning$trial>40,]$m
+
+dat_projectional_lesioned<-read.csv('./data/simulation_data_model_transition_recall_leison_variable_motif.csv')
+dat_projectional_lesioned$complexity<- -log(dat_projectional_lesioned$recall_likelihood)
+dat_projectional_lesioned$trial<-rep((1:64),length(unique(dat_projectional_lesioned$ID)))
+dat_projectional_lesioned<-ddply(dat_projectional_lesioned, .(trial,condition), summarize, m=mean(complexity))
+sequence_learning<-dat_projectional_lesioned[dat_projectional_lesioned$trial>40,]$m
+
+
+dat_gpt2<-read.csv('/Users/swu/Downloads/gpt2_m1_simulation.csv')
+dat_gpt2$complexity<- -log(dat_gpt2$p)
+dat_gpt2$trial<-rep((1:64),length(unique(dat_gpt2$ID)))
+dat_gpt2<-ddply(dat_gpt2, .(trial,condition), summarize, m=mean(complexity))
+gpt2_learning<-dat_gpt2[dat_gpt2$trial>40,]$m
+
+
+dat_lama7B<-read.csv('./data/Llama-2-7b-chat-hf.csv')
+dat_lama7B$complexity<- -log(dat_lama7B$p)
+dat_lama7B$trial<-rep((1:64),length(unique(dat_lama7B$ID)))
+dat_lama7B<-ddply(dat_lama7B, .(trial,condition), summarize, m=mean(complexity))
+lama7b_learning<-dat_lama7B[dat_lama7B$trial>40,]$m
+
+
+dat_lama13B<-read.csv('./data/Llama-2-13b-chat-hf.csv')
+dat_lama13B$complexity<- -log(dat_lama13B$p)
+dat_lama13B$trial<-rep((1:64),length(unique(dat_lama13B$ID)))
+dat_lama13B<-ddply(dat_lama13B, .(trial,condition), summarize, m=mean(complexity))
+lama13b_learning<-dat_lama13B[dat_lama13B$trial>40,]$m
+
+
+dat_lama70B<-read.csv('./data/Llama-2-13b-chat-hf.csv')
+dat_lama70B$complexity<- -log(dat_lama70B$p)
+dat_lama70B$trial<-rep((1:64),length(unique(dat_lama70B$ID)))
+dat_lama70B<-ddply(dat_lama70B, .(trial,condition), summarize, m=mean(complexity))
+lama70b_learning<-dat_lama70B[dat_lama70B$trial>40,]$m
+
+
+dfmc<-data.frame(empirical_rt,motif_learning,associative_learning,sequence_learning, lama7b_learning, lama13b_learning,lama70b_learning)
+
+
+model <- lm(empirical_rt~motif_learning, data=dfmc)
+RSmotiflearning<- summary(model)$r.squared
+
+model <- lm(empirical_rt~associative_learning, data=dfmc)
+RSassociative_learning<- summary(model)$r.squared
+
+model <- lm(empirical_rt~sequence_learning, data=dfmc)
+RSsequence_learning<- summary(model)$r.squared
+
+# Create data
+modelcomparison <- data.frame(
+  name=c("HVM","AL","HCM") ,  
+  value=c(RSmotiflearning,RSassociative_learning,RSsequence_learning))
+
+
+#creat plot
+p8 <- ggplot(modelcomparison, aes(y=value, x=reorder(name,+value))) +
+  #show mean
+  stat_summary(fun = mean, geom = "bar", position = "dodge", color='black', width=0.5) + 
+  #points
+  geom_point()+
+  #error bars +/- SEs
+  scale_y_continuous(expand = c(0, 0))+
+  #ylab
+  ylab("R-Squared")+
+  #x-lab
+  xlab("Model")+ 
+  #theme
+  theme_classic()+
+  #theme change
+
+  # Additional theme settings
+  theme(strip.background = element_blank(), 
+        legend.key = element_rect(color = NA), 
+        aspect.ratio = 1.2,
+        legend.position = "none",
+        plot.title = element_text(size = 20),  # Increase plot title font size
+        axis.title = element_text(size = 20),  # Increase axis titles font size
+        axis.text = element_text(size = 20),
+        axis.text.x = element_text()) +
+
+  ggtitle("Human Transfer")
+p8
+
+```

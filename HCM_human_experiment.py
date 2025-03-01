@@ -6,7 +6,7 @@ from CG1 import *
 
 
 
-def HCM_experiment2(theta = 0.996, save_path = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall.csv', save_keys = False):
+def HCM_experiment2(theta = 0.996, save_path = './simulation_data_model_transition_recall.csv', save_keys = False):
     def acc_eval1d(img_seq, gt):
         """ Compare the accuracy between an imaginary sequence and a ground truth sequence """
         l = 0
@@ -15,7 +15,7 @@ def HCM_experiment2(theta = 0.996, save_path = '/Users/swu/Desktop/research/moti
                 l = l + 1
         return l/img_seq.shape[0]
 
-    df = pd.read_csv('/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/data.csv')
+    df = pd.read_csv('./data/human_data.csv')
 
     dfm = {}  # model dataframe
     dfm['blockcollect'] = []
@@ -113,6 +113,6 @@ def HCM_experiment2(theta = 0.996, save_path = '/Users/swu/Desktop/research/moti
     csv_save_directory = save_path
     dfm.to_csv(csv_save_directory, index=False, header=True)
     if save_keys:
-        dfs_csv_save_directory = '/Users/swu/Desktop/research/motif_learning/data/simonsays_ex2/simulation_data_model_transition_recall_leison_variable_motif_individualkey_theta=' + str(theta) + '.csv'
+        dfs_csv_save_directory = './simulation_data_model_transition_recall_leison_variable_motif_individualkey_theta=' + str(theta) + '.csv'
         dfs.to_csv(dfs_csv_save_directory, index=False, header=True)
     return

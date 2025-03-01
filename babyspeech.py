@@ -1,8 +1,6 @@
 import numpy as np
 from collections import Counter
-from Hand_made_generative import *
 from Generative_Model import *
-from text_learning import *
 from Learning import *
 from CG1 import *
 from chunks import *
@@ -11,7 +9,6 @@ from PIL import Image
 import os
 from time import time
 from chunks import *
-from abstraction_test import *
 
 def calculate_sem(data):
     """
@@ -134,6 +131,11 @@ def build_vocabulary(tokens, min_freq=1):
 
     return vocabulary
 
+def read_text_file(filepath):
+    with open(filepath, 'r', encoding='utf8') as file:
+        text = file.read()
+    return text
+
 
 plot = False
 
@@ -141,13 +143,6 @@ plot = False
 # train on chunking model
 # evaluate preplexity
 
-# # Assuming the dataset is downloaded and the file paths are known
-# train_path = '/Users/swu/Documents/MouseHCM/train_10M/childes.train'
-# # train_path = '/Users/swu/Documents/MouseHCM/train_10M/bnc_spoken.train'
-# # train_path = '/Users/swu/Documents/MouseHCM/train_10M/gutenberg.train'
-# # train_path = '/Users/swu/Documents/MouseHCM/train_10M/open_subtitles.train'
-# # train_path = '/Users/swu/Documents/MouseHCM/train_10M/simple_wiki.train'
-# # train_path = '/Users/swu/Documents/MouseHCM/train_10M/switchboard.train'
 import argparse
 
 # Initialize the parser
@@ -159,14 +154,9 @@ parser.add_argument("-n", "--filename", type=str, help="Filename", default="bnc_
 # Parse the arguments
 args = parser.parse_args()
 
-# Access the arguments
-print(f"Hello, {args.filename}!")
+train_path = './train_10M/' + args.filename
 
-train_path = '/Users/swu/Documents/MouseHCM/train_10M/' + args.filename
-
-
-
-train_text = read_wikitext_file(train_path)
+train_text = read_text_file(train_path)
 
 # Tokenize the text
 train_tokens = tokenize(train_text)
@@ -208,7 +198,6 @@ np.save(f'./data/babyspeech/{args.filename}_sequence_original_length.npy', seque
 
 #################################### Now the hierarchical learning models ############################
 fullseq = np.array(train_tokens).reshape([len(train_tokens), 1, 1])
-
 
 slice_sz = 1000
 n_measure = 9
@@ -272,34 +261,13 @@ if plot:
 # report as table in the updated evalution measure
 seql = 1000
 
-hcm_mean_seq_l = seql / np.mean(datahcm[:, -1, 3], axis=0)  # at the end of training
-hvm_mean_seq_l = seql / np.mean(datahvm[:, -1, 3], axis=0)  # average over different runs
-lz_mean_seq_l = np.mean(datalz_length[:, -1, 0], axis=0)   # average over different runs
-
-
 hcm_min_seq_l = seql / np.max(datahcm[:, -1, 3], axis=0)  # at the end of training
 hvm_min_seq_l = seql / np.max(datahvm[:, -1, 3], axis=0)  # average over different runs
 lz_min_seq_l = np.max(datalz_length[:, -1, 0], axis=0)   # average over different runs
 
-sem_seq_l = [calculate_sem(seql / datahcm[:, -1, 3]), calculate_sem(seql / datahvm[:, -1, 3]),
-             calculate_sem(datalz_length[:, -1, 0] )]
-
-hcm_mean_complexity = np.mean(datahcm[:, -1, 4], axis=0)  # average over different runs
-hvm_mean_complexity = np.mean(datahvm[:, -1, 4], axis=0)  # average over different runs
-lz_mean_complexity = np.mean(datalz_complexity[:, -1, 0], axis=0)  # average over different runs
-
 hcm_min_complexity = np.min(datahcm[:, -1, 4], axis=0)  # average over different runs
 hvm_min_complexity = np.min(datahvm[:, -1, 4], axis=0)  # average over different runs
 lz_min_complexity = np.min(datalz_complexity[:, -1, 0], axis=0)  # average over different runs
-sem_complexity = [calculate_sem(datahcm[:, -1, 4]), calculate_sem(datahvm[:, -1, 4]),
-                  calculate_sem(datalz_complexity[:, -1, 0])]
-
-# leave entropy out for now
-# hcm_mean_entropy = np.mean(datahcm[:, -1, 5], axis=0)
-# hvm_mean_entropy = np.mean(datahvm[:, -1, 5], axis=0)
-# sem_seq_entropy = [calculate_sem(datahcm[:, -1, 5]), calculate_sem(datahvm[:, -1, 5])]
-#
-
 
 #############
 if plot:
@@ -323,8 +291,6 @@ if plot:
     axes[1].set_xlabel('Models')
     axes[1].set_ylabel('Sequence Likelihood -logP(S)')
     plt.yscale('linear')
-
-
 
 
 
@@ -353,34 +319,11 @@ for seq in slicer(fullseq, slice_sz):  # the same sequence as in
 
 hcm_coding_efficiency = datahcm[:, -1, 6]/seql # this would be an array over different runs
 hvm_coding_efficiency = datahvm[:, -1, 6]/seql
-hcm_mean_coding_efficiency = np.mean(hcm_coding_efficiency)  # at the end of training
-hvm_mean_coding_efficiency = np.mean(hvm_coding_efficiency)  # average over different runs
-lz_mean_coding_efficiency = np.mean(datalz_compression_efficiency[:, -1, 0])  # average over different runs
 
 hcm_min_coding_efficiency = np.min(hcm_coding_efficiency)  # at the end of training
 hvm_min_coding_efficiency = np.min(hvm_coding_efficiency)  # average over different runs
 lz_min_coding_efficiency = np.min(datalz_compression_efficiency[:, -1, 0])  # average over different runs
 
-sem_coding_efficiency = [calculate_sem(hcm_coding_efficiency), calculate_sem(hvm_coding_efficiency),
-                  calculate_sem(datalz_compression_efficiency[:, -1, 0])]
-
-
-
-
-
-
-
-print(f'seql: mean [hcm, hvm, lz] {hcm_mean_seq_l:.2f}, {hvm_mean_seq_l:.2f}, {lz_mean_seq_l:.2f}')
 print(f'seql: min [hcm, hvm, lz] {hcm_min_seq_l:.2f}, {hvm_min_seq_l:.2f}, {lz_min_seq_l:.2f}')
-formatted_list = [f"{x:.2f}" for x in sem_seq_l]
-print('seql: se [hcm, hvm, lz]', formatted_list)
-
-print(f'complexity: mean [hcm, hvm, lz] {hcm_mean_complexity:.2f},{hvm_mean_complexity:.2f},{lz_mean_complexity:.2f}')
-formatted_list = [f"{x:.2f}" for x in sem_complexity]
-print('complexity: se [hcm, hvm, lz]', formatted_list)
 print(f'complexity: min [hcm, hvm, lz] {hcm_min_complexity:.2f},{hvm_min_complexity:.2f},{lz_min_complexity:.2f}')
-
-print(f'coding efficiency: mean [hcm, hvm, lz] {hcm_mean_coding_efficiency:.2f},{hvm_mean_coding_efficiency:.2f},{lz_mean_coding_efficiency:.2f}')
-formatted_list = [f"{x:.2f}" for x in sem_coding_efficiency]
-print('coding efficiency: se [hcm, hvm, lz]', formatted_list)
 print(f'coding efficiency: min [hcm, hvm, lz] {hcm_min_coding_efficiency:.2f},{hvm_min_coding_efficiency:.2f},{lz_min_coding_efficiency:.2f}')

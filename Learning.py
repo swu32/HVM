@@ -6,7 +6,6 @@ from scipy.stats import chisquare
 from math import log2
 from chunks import *
 from buffer import *
-from test_Learning import *
 
 
 def plot_average_model_learning_comparison(datahcm, datahvm, d=None, sz=10, savename = 'modelcomparison.png', gt_load_name = None):

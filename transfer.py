@@ -1,4 +1,3 @@
-from Hand_made_generative import *
 from Generative_Model import *
 from text_learning import *
 from Learning import *
@@ -10,7 +9,6 @@ from PIL import Image
 import os
 from time import time
 from chunks import *
-from abstraction_test import *
 import matplotlib.pyplot as plt
 
 def measure_KL():
@@ -258,12 +256,6 @@ def transfer_different_sequence_same_generative_model():
             datahvm[i, nit, :] = np.array(cghvm.learning_data[-1])
     comparisonplot(datahcm, datahvm, total_n_iter)
     return
-relative_likelihood_existing_sequence(d= 15)
-transfer_different_sequence_same_generative_model()
-test_random_graph_abstraction(generation=False)
 
 
-# def generate_str_seq(fullseq):
-#     letters = ['A','B','C','D','E','F','G','H','I','J','K']
-#     str_seq = ''.join([letters[int(fullseq[s,0,0]] for s in range(0,2000)])
-#     return str_seq
+relative_likelihood_existing_sequence(d= 25)
