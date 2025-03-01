@@ -107,17 +107,7 @@ def slicer(seq, size):
 
 
 def main():
-    test_random_graph_abstraction(generation=False, sequence_length=1000, depth_increment=[30])
-
-    test_random_graph_abstraction(generation=False)
-    seq = abstraction_illustration()
-
-    test_depth_parsing()
-    simonsaysex2()
-    test_simple_abstraction()  # within which there is an hcm rational
-
     pass
-
 
 if __name__ == "__main__":
     main()
